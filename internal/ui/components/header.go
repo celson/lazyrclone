@@ -7,18 +7,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type Tab int
+type PanelID int
 
 const (
-	TabProfiles Tab = iota
-	TabExplorer
-	TabTransfers
-	TabRemotes
+	PanelProfiles PanelID = 0 // [1] Profiles & Remotes
+	PanelRuns     PanelID = 1 // [2] Transfers & Runs
+	PanelMain     PanelID = 2 // [3] Main View (Diff / Explorer / Logs)
 )
 
-var TabNames = []string{"1: Profiles", "2: Explorer", "3: Transfers", "4: Remotes"}
+var PanelNames = []string{"1: Profiles", "2: Runs", "3: Main View"}
 
-func RenderHeader(width int, currentTab Tab, rcloneVer string, isMock bool) string {
+func RenderHeader(width int, focusedPanel PanelID, rcloneVer string, isMock bool) string {
 	logo := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(styles.MochaCrust).
@@ -26,15 +25,15 @@ func RenderHeader(width int, currentTab Tab, rcloneVer string, isMock bool) stri
 		Padding(0, 1).
 		Render("⚡ lazyrclone")
 
-	var tabs []string
-	for i, name := range TabNames {
-		if Tab(i) == currentTab {
-			tabs = append(tabs, styles.TabActiveStyle.Render(name))
+	var panels []string
+	for i, name := range PanelNames {
+		if PanelID(i) == focusedPanel {
+			panels = append(panels, styles.TabActiveStyle.Render(name))
 		} else {
-			tabs = append(tabs, styles.TabInactiveStyle.Render(name))
+			panels = append(panels, styles.TabInactiveStyle.Render(name))
 		}
 	}
-	tabsRow := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+	panelsRow := lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 
 	statusText := fmt.Sprintf("● %s", rcloneVer)
 	statusStyle := lipgloss.NewStyle().Foreground(styles.ColorSuccess).Bold(true)
@@ -44,7 +43,7 @@ func RenderHeader(width int, currentTab Tab, rcloneVer string, isMock bool) stri
 	}
 	statusRendered := statusStyle.Render(statusText)
 
-	leftPart := lipgloss.JoinHorizontal(lipgloss.Center, logo, "  ", tabsRow)
+	leftPart := lipgloss.JoinHorizontal(lipgloss.Center, logo, "  ", panelsRow)
 
 	spaceLen := width - lipgloss.Width(leftPart) - lipgloss.Width(statusRendered) - 2
 	if spaceLen < 1 {

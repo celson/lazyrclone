@@ -47,54 +47,47 @@ lazyrclone --demo
 
 ## ⌨️ Keybindings
 
-### Global
+### Global Panel Navigation
 | Key | Action |
 | --- | --- |
-| `1` | Switch to **Profiles** tab |
-| `2` | Switch to **Explorer** tab |
-| `3` | Switch to **Transfers** tab |
-| `4` | Switch to **Remotes** tab |
-| `Tab` | Switch between Views / Explorer Panes |
-| `?` | Toggle Help dialog |
+| `1` | Focus **[1] Profiles** panel |
+| `2` | Focus **[2] Transfers & Runs** panel |
+| `3` | Focus **[3] Main View** panel |
+| `Tab` / `Shift+Tab` | Cycle focus forward / backward between panels |
+| `[` / `]` | Switch Main View sub-tab (**Diff Preview** ⟷ **Dual Explorer** ⟷ **Live Logs**) |
+| `?` | Toggle interactive Help overlay |
 | `q` / `Ctrl+C` | Quit |
 
-### Profiles View
+### Panel [1] Profiles (Tasks & Remotes)
 | Key | Action |
 | --- | --- |
-| `d` | Run **honest dry-run diff** preview |
-| `r` / `Enter` | Execute selected profile |
+| `j` / `k` or `↑` / `↓` | Navigate profiles list |
+| `d` or `p` | Run **honest dry-run diff** (renders live in Main View!) |
+| `r` / `Enter` | Execute sync/copy operation with live progress |
 | `n` | Create a new profile |
 | `e` | Edit selected profile |
 | `x` | Delete selected profile |
-| `f` | Focus diff preview (scroll with `j`/`k`) |
 
-### Dual-Pane Explorer View
+### Panel [2] Transfers & Runs
 | Key | Action |
 | --- | --- |
-| `Tab` / `h` / `l` | Switch active pane (Left ⟷ Right) |
-| `Enter` | Enter directory |
-| `Backspace` / `-` | Go to parent directory |
-| `Space` | Select / deselect file |
-| `r` | Change remote for active pane (e.g., `gdrive:`, `s3:`, `local:`) |
-| `c` | Copy selected item(s) to the target pane |
-| `s` | Sync active directory to the target pane |
-| `n` | Create a new directory |
-| `x` | Delete file / directory (with confirmation) |
-| `R` | Refresh current pane |
-
-### Transfers View
-| Key | Action |
-| --- | --- |
-| `j` / `k` | Select transfer job |
+| `j` / `k` | Select transfer run |
 | `x` | Cancel / stop active job |
-| `c` | Clear completed transfer jobs |
+| `c` | Clear completed jobs |
 
-### Remotes View
+### Panel [3] Main View (Diff / Explorer / Logs)
 | Key | Action |
 | --- | --- |
-| `j` / `k` | Select remote |
-| `t` | Test connection / reachability |
-| `r` | Refresh remotes and storage quota |
+| `[` / `]` | Toggle sub-tab (**Diff** \| **Explorer** \| **Logs**) |
+| `j` / `k` | Scroll diff lines or job logs |
+| `←` / `→` | Switch active pane in Dual Explorer (Source ⟷ Dest) |
+| `Enter` | Open directory in Explorer |
+| `Backspace` / `-` | Go to parent directory |
+| `Space` | Select / deselect file in Explorer |
+| `c` | Copy selected item(s) to target pane |
+| `s` | Sync directory to target pane |
+| `n` | Create new directory in Explorer |
+| `x` | Delete file / directory (with confirmation) |
 
 ---
 
