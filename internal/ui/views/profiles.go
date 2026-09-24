@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/celson/lazyrclone/internal/config"
-	"github.com/celson/lazyrclone/internal/rclone"
 	"github.com/celson/lazyrclone/internal/ui/components"
 	"github.com/celson/lazyrclone/internal/ui/styles"
 	"github.com/charmbracelet/lipgloss"
@@ -139,25 +138,12 @@ func (v *ProfilesView) Render() string {
 
 		// Remotes footer if space permits
 		if len(v.Remotes) > 0 && len(lines) < innerHeight-1 {
-			var rTokens []string
-			for _, r := range v.Remotes {
-				quota := ""
-				if r.About != nil && r.About.Total > 0 {
-					quota = fmt.Sprintf(" (%s)", rclone.FormatBytes(r.About.Used))
-				}
-				rTokens = append(rTokens, fmt.Sprintf("%s%s", r.Info.Name, quota))
-			}
-			remotesLine := "Remotes: " + strings.Join(rTokens, " • ")
-			if len(remotesLine) > innerWidth-2 && innerWidth > 6 {
-				remotesLine = remotesLine[:innerWidth-5] + "..."
-			}
-
-			// Pad lines up to footer
 			for len(lines) < innerHeight-2 {
 				lines = append(lines, "")
 			}
 			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorBorder).Render(strings.Repeat("─", innerWidth)))
-			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(" "+remotesLine))
+			remotesHint := fmt.Sprintf(" Remotes: %d available • Press [R] or [4] to view", len(v.Remotes))
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(remotesHint))
 		}
 	}
 

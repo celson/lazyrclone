@@ -49,4 +49,15 @@ func TestAppModelBorderEnclosure(t *testing.T) {
 	if !strings.Contains(statusBarLine, "lazyrclone v0.1.0") {
 		t.Errorf("expected status bar with version, got: %s", statusBarLine)
 	}
+
+	// Test SubTabRemotes rendering and border enclosure
+	app.MainSubTab = SubTabRemotes
+	remotesView := app.View()
+	remotesLines := strings.Split(remotesView, "\n")
+	if len(remotesLines) != 30 {
+		t.Fatalf("expected SubTabRemotes view to have exactly 30 lines, got %d", len(remotesLines))
+	}
+	if !strings.Contains(remotesLines[0], "Remotes") {
+		t.Errorf("expected 'Remotes' tab in top line, got: %s", remotesLines[0])
+	}
 }

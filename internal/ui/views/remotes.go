@@ -115,106 +115,184 @@ func (v *RemotesView) TestConnection() {
 	}(r)
 }
 
-func (v *RemotesView) Render() string {
-	topHeight := (v.Height / 2) - 1
-	bottomHeight := v.Height - topHeight - 2
-	if topHeight < 5 {
-		topHeight = 5
+func (v *RemotesView) RenderLines(width, height int) []string {
+	innerWidth := width - 2
+	innerHeight := height - 2
+	if innerWidth < 10 {
+		innerWidth = 10
 	}
-	if bottomHeight < 5 {
-		bottomHeight = 5
+	if innerHeight < 4 {
+		innerHeight = 4
 	}
 
-	var listLines []string
+	var lines []string
+
+	// Header row
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.ColorSecondary)
+	nameColWidth := 20
+	typeColWidth := 14
+	statusColWidth := 14
+	quotaColWidth := innerWidth - nameColWidth - typeColWidth - statusColWidth - 4
+	if quotaColWidth < 16 {
+		quotaColWidth = 16
+	}
+
+	headerLine := fmt.Sprintf("  %-*s %-*s %-*s %s",
+		nameColWidth, "REMOTE",
+		typeColWidth, "TYPE",
+		quotaColWidth, "QUOTA / STORAGE",
+		"STATUS",
+	)
+	lines = append(lines, headerStyle.Render(headerLine))
+	lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorBorder).Render("  "+strings.Repeat("─", innerWidth-4)))
+
 	if len(v.Remotes) == 0 {
-		listLines = append(listLines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("No remotes configured or detected. Press [r] to refresh."))
-	} else {
-		for i, r := range v.Remotes {
-			typeBadge := lipgloss.NewStyle().Bold(true).Foreground(styles.ColorPrimary).Render(fmt.Sprintf("[%s]", r.Info.Type))
-			testStatus := ""
-			if r.Testing {
-				testStatus = lipgloss.NewStyle().Foreground(styles.ColorWarning).Render("⟳ testing...")
-			} else if r.TestOK != nil {
-				if *r.TestOK {
-					testStatus = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ Online")
-				} else {
-					testStatus = lipgloss.NewStyle().Foreground(styles.ColorDanger).Render("✕ Offline")
-				}
-			}
+		lines = append(lines, "")
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  No remotes found in rclone.conf."))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  Press [r] to refresh or configure remotes using 'rclone config'."))
+		return lines
+	}
 
-			quotaShort := ""
-			if r.About != nil && r.About.Total > 0 {
-				usedPct := int((float64(r.About.Used) / float64(r.About.Total)) * 100)
-				quotaShort = fmt.Sprintf("%s / %s (%d%%)", rclone.FormatBytes(r.About.Used), rclone.FormatBytes(r.About.Total), usedPct)
-			}
+	// How many lines to allocate for list vs details
+	listHeight := (innerHeight * 55) / 100
+	if listHeight < 5 {
+		listHeight = 5
+	}
+	maxVisibleRemotes := listHeight - 2
+	if maxVisibleRemotes < 1 {
+		maxVisibleRemotes = 1
+	}
 
-			line := fmt.Sprintf("%-20s %-14s %-28s %s", r.Info.Name, typeBadge, quotaShort, testStatus)
-			if i == v.SelectedIdx {
-				listLines = append(listLines, styles.SelectedItemStyle.Width(v.Width-6).Render("▶ "+line))
+	scrollOffset := 0
+	if v.SelectedIdx >= maxVisibleRemotes {
+		scrollOffset = v.SelectedIdx - maxVisibleRemotes + 1
+	}
+	endIdx := scrollOffset + maxVisibleRemotes
+	if endIdx > len(v.Remotes) {
+		endIdx = len(v.Remotes)
+	}
+
+	for i := scrollOffset; i < endIdx; i++ {
+		r := v.Remotes[i]
+		typeBadge := lipgloss.NewStyle().Bold(true).Foreground(styles.ColorPrimary).Render(fmt.Sprintf("[%s]", r.Info.Type))
+
+		testStatus := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("• Ready")
+		if r.Testing {
+			testStatus = lipgloss.NewStyle().Foreground(styles.ColorWarning).Render("⟳ testing...")
+		} else if r.TestOK != nil {
+			if *r.TestOK {
+				testStatus = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ Online")
 			} else {
-				listLines = append(listLines, styles.NormalItemStyle.Render("  "+line))
+				testStatus = lipgloss.NewStyle().Foreground(styles.ColorDanger).Render("✕ Offline")
 			}
+		}
+
+		quotaShort := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("--")
+		if r.About != nil && r.About.Total > 0 {
+			usedPct := int((float64(r.About.Used) / float64(r.About.Total)) * 100)
+			quotaShort = fmt.Sprintf("%s / %s (%d%%)", rclone.FormatBytes(r.About.Used), rclone.FormatBytes(r.About.Total), usedPct)
+		} else if r.About != nil && r.About.Used > 0 {
+			quotaShort = fmt.Sprintf("%s used", rclone.FormatBytes(r.About.Used))
+		}
+
+		cleanName := r.Info.Name
+		if len(cleanName) > nameColWidth-2 {
+			cleanName = cleanName[:nameColWidth-4] + ".."
+		}
+
+		rowContent := fmt.Sprintf("%-*s %-*s %-*s %s",
+			nameColWidth, cleanName,
+			typeColWidth, typeBadge,
+			quotaColWidth, quotaShort,
+			testStatus,
+		)
+
+		if i == v.SelectedIdx {
+			lines = append(lines, styles.SelectedItemStyle.Width(innerWidth-2).Render("▶ "+rowContent))
+		} else {
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorWhite).Render("  "+rowContent))
 		}
 	}
 
-	topPanel := styles.ActivePanelStyle.
-		Width(v.Width - 4).
-		Height(topHeight).
-		Render(lipgloss.JoinVertical(lipgloss.Left, styles.ActivePanelTitleStyle.Render(" Configured Rclone Remotes "), "\n", strings.Join(listLines, "\n")))
+	// Pad between list and details if needed
+	for len(lines) < listHeight {
+		lines = append(lines, "")
+	}
 
-	// Details / Quota Panel
+	// Divider
+	lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorBorder).Render(strings.Repeat("─", innerWidth)))
+
+	// Details Card for Selected Remote
 	sel := v.SelectedRemote()
-	var detailsContent string
-	if sel == nil {
-		detailsContent = lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("Select a remote to view credentials, configuration, and quota details.")
-	} else {
-		header := fmt.Sprintf("Remote: %s   Type: %s",
+	if sel != nil {
+		statusStr := "Ready"
+		statusStyle := lipgloss.NewStyle().Foreground(styles.ColorMuted)
+		if sel.Testing {
+			statusStr = "Testing connection..."
+			statusStyle = lipgloss.NewStyle().Foreground(styles.ColorWarning)
+		} else if sel.TestOK != nil {
+			if *sel.TestOK {
+				statusStr = "Online (" + sel.TestMsg + ")"
+				statusStyle = lipgloss.NewStyle().Foreground(styles.ColorSuccess)
+			} else {
+				statusStr = "Offline (" + sel.TestMsg + ")"
+				statusStyle = lipgloss.NewStyle().Foreground(styles.ColorDanger)
+			}
+		}
+
+		titleLine := fmt.Sprintf("  Remote: %s   Provider: %s   Status: %s",
 			lipgloss.NewStyle().Bold(true).Foreground(styles.ColorPrimary).Render(sel.Info.Name),
 			lipgloss.NewStyle().Bold(true).Foreground(styles.ColorSecondary).Render(sel.Info.Type),
+			statusStyle.Render(statusStr),
 		)
+		lines = append(lines, titleLine)
 
-		var quotaLines []string
+		// Quota Bar
 		if sel.About != nil && sel.About.Total > 0 {
 			usedPct := int((float64(sel.About.Used) / float64(sel.About.Total)) * 100)
-			barWidth := v.Width - 32
+			barWidth := innerWidth - 36
 			if barWidth < 10 {
 				barWidth = 10
 			}
-			bar := styles.RenderProgressBar(barWidth, usedPct)
-
-			quotaLines = append(quotaLines,
-				fmt.Sprintf("Storage Quota: %s %3d%%", bar, usedPct),
-				fmt.Sprintf("Used: %s   Free: %s   Total: %s   Objects: %d",
-					rclone.FormatBytes(sel.About.Used),
-					rclone.FormatBytes(sel.About.Free),
-					rclone.FormatBytes(sel.About.Total),
-					sel.About.Objects,
-				),
-			)
+			progressBar := styles.RenderProgressBar(barWidth, usedPct)
+			lines = append(lines, fmt.Sprintf("  Quota: %s %3d%%  (%s / %s, Free: %s)",
+				progressBar, usedPct,
+				rclone.FormatBytes(sel.About.Used),
+				rclone.FormatBytes(sel.About.Total),
+				rclone.FormatBytes(sel.About.Free),
+			))
+		} else if sel.About != nil && sel.About.Used > 0 {
+			lines = append(lines, fmt.Sprintf("  Quota: %s used (provider does not report total quota limit)", rclone.FormatBytes(sel.About.Used)))
 		} else {
-			quotaLines = append(quotaLines, "Storage Quota: Unlimited or not reported by provider.")
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  Quota: Not reported or unlimited."))
 		}
 
-		var detailLines []string
+		// Config parameters
 		if len(sel.Info.Details) > 0 {
-			detailLines = append(detailLines, "Config Parameters:")
+			var configPairs []string
 			for k, val := range sel.Info.Details {
-				detailLines = append(detailLines, fmt.Sprintf("  • %-16s: %s", k, val))
+				if len(val) > 28 {
+					val = val[:25] + "..."
+				}
+				configPairs = append(configPairs, fmt.Sprintf("%s: %s", k, val))
 			}
+			cfgLine := "  Config: " + strings.Join(configPairs, " • ")
+			if len(cfgLine) > innerWidth-4 && innerWidth > 8 {
+				cfgLine = cfgLine[:innerWidth-7] + "..."
+			}
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSubtext).Render(cfgLine))
 		}
 
-		if sel.TestMsg != "" {
-			detailLines = append(detailLines, fmt.Sprintf("Reachability: %s", sel.TestMsg))
-		}
-
-		parts := []string{header, "\n", strings.Join(quotaLines, "\n"), "\n", strings.Join(detailLines, "\n")}
-		detailsContent = strings.Join(parts, "\n")
+		lines = append(lines, "")
+		actionGuide := lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(
+			"  [t] Test Reachability    [Enter] Browse in Explorer    [r] Refresh Remotes",
+		)
+		lines = append(lines, actionGuide)
 	}
 
-	bottomPanel := styles.PanelStyle.
-		Width(v.Width - 4).
-		Height(bottomHeight).
-		Render(lipgloss.JoinVertical(lipgloss.Left, styles.PanelTitleStyle.Render(" Remote Details & Quota "), "\n", detailsContent))
+	return lines
+}
 
-	return lipgloss.JoinVertical(lipgloss.Left, topPanel, bottomPanel)
+func (v *RemotesView) Render() string {
+	return strings.Join(v.RenderLines(v.Width, v.Height), "\n")
 }

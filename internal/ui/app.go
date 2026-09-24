@@ -20,9 +20,10 @@ const (
 	SubTabDiff MainSubTab = iota
 	SubTabExplorer
 	SubTabLogs
+	SubTabRemotes
 )
 
-var MainSubTabNames = []string{"Diff Preview", "Dual Explorer", "Live Logs"}
+var MainSubTabNames = []string{"Diff Preview", "Dual Explorer", "Live Logs", "Remotes"}
 
 type DryRunFinishedMsg struct {
 	Result *rclone.DryRunResult
@@ -241,6 +242,12 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updatePanelsActive()
 			return m, nil
 
+		case "4":
+			m.FocusedPanel = components.PanelMain
+			m.MainSubTab = SubTabRemotes
+			m.updatePanelsActive()
+			return m, nil
+
 		case "tab":
 			// Cycle panels: 0 -> 1 -> 2 -> 0
 			m.FocusedPanel = (m.FocusedPanel + 1) % 3
@@ -258,14 +265,14 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "[":
 			if m.MainSubTab == 0 {
-				m.MainSubTab = SubTabLogs
+				m.MainSubTab = SubTabRemotes
 			} else {
 				m.MainSubTab--
 			}
 			return m, nil
 
 		case "]":
-			m.MainSubTab = (m.MainSubTab + 1) % 3
+			m.MainSubTab = (m.MainSubTab + 1) % 4
 			return m, nil
 
 		case "?":
@@ -380,6 +387,11 @@ func (m *AppModel) handleProfilesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "l", "right":
 		m.FocusedPanel = components.PanelMain
 		m.updatePanelsActive()
+	case "R":
+		m.FocusedPanel = components.PanelMain
+		m.MainSubTab = SubTabRemotes
+		m.updatePanelsActive()
+		return m, nil
 	case "d", "p":
 		p := m.ProfilesView.SelectedProfile()
 		if p == nil {
@@ -658,6 +670,32 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			m.LogsOffset++
 		}
+
+	case SubTabRemotes:
+		switch msg.String() {
+		case "up", "k":
+			m.RemotesView.MoveUp()
+		case "down", "j":
+			m.RemotesView.MoveDown()
+		case "t":
+			m.RemotesView.TestConnection()
+			m.StatusMsg = "Testing remote connection..."
+		case "r":
+			m.RemotesView.Refresh()
+			m.ProfilesView.SetRemotes(m.RemotesView.Remotes)
+			m.StatusMsg = "Remotes refreshed."
+		case "enter":
+			r := m.RemotesView.SelectedRemote()
+			if r != nil {
+				m.ExplorerView.Panes[m.ExplorerView.ActivePane].Remote = r.Info.Name
+				m.ExplorerView.Panes[m.ExplorerView.ActivePane].CurrentDir = ""
+				m.ExplorerView.Panes[m.ExplorerView.ActivePane].SelectedIdx = 0
+				m.ExplorerView.Panes[m.ExplorerView.ActivePane].ScrollOffset = 0
+				m.ExplorerView.LoadPane(m.ExplorerView.ActivePane)
+				m.MainSubTab = SubTabExplorer
+				m.StatusMsg = fmt.Sprintf("Opened remote '%s' in Dual Explorer.", r.Info.Name)
+			}
+		}
 	}
 
 	return m, nil
@@ -752,10 +790,21 @@ func (m *AppModel) startTransferCmd(job *rclone.TransferJob) tea.Cmd {
 }
 
 func (m *AppModel) renderMainPanel(width, height int) string {
-	subTabs := []components.SubTabItem{
-		{Name: "Diff Preview", IsActive: m.MainSubTab == SubTabDiff},
-		{Name: "Dual Explorer", IsActive: m.MainSubTab == SubTabExplorer},
-		{Name: "Live Logs", IsActive: m.MainSubTab == SubTabLogs},
+	var subTabs []components.SubTabItem
+	if width < 75 {
+		subTabs = []components.SubTabItem{
+			{Name: "Diff", IsActive: m.MainSubTab == SubTabDiff},
+			{Name: "Explorer", IsActive: m.MainSubTab == SubTabExplorer},
+			{Name: "Logs", IsActive: m.MainSubTab == SubTabLogs},
+			{Name: "Remotes", IsActive: m.MainSubTab == SubTabRemotes},
+		}
+	} else {
+		subTabs = []components.SubTabItem{
+			{Name: "Diff Preview", IsActive: m.MainSubTab == SubTabDiff},
+			{Name: "Dual Explorer", IsActive: m.MainSubTab == SubTabExplorer},
+			{Name: "Live Logs", IsActive: m.MainSubTab == SubTabLogs},
+			{Name: "Remotes", IsActive: m.MainSubTab == SubTabRemotes},
+		}
 	}
 
 	isActive := (m.FocusedPanel == components.PanelMain)
@@ -797,6 +846,10 @@ func (m *AppModel) renderMainPanel(width, height int) string {
 				lines = append(lines, "  "+l)
 			}
 		}
+		return components.RenderPanelBox(width, height, "[3] Main View", subTabs, isActive, lines)
+
+	case SubTabRemotes:
+		lines := m.RemotesView.RenderLines(width, height)
 		return components.RenderPanelBox(width, height, "[3] Main View", subTabs, isActive, lines)
 	}
 
@@ -872,6 +925,7 @@ func (m *AppModel) View() string {
 			{Key: "1-3", Desc: "Focus"},
 			{Key: "d", Desc: "Dry-Run"},
 			{Key: "r/Enter", Desc: "Run"},
+			{Key: "R", Desc: "Remotes"},
 			{Key: "n", Desc: "New"},
 			{Key: "e", Desc: "Edit"},
 			{Key: "x", Desc: "Delete"},
@@ -919,6 +973,18 @@ func (m *AppModel) View() string {
 			shortcuts = []components.Shortcut{
 				{Key: "1-3", Desc: "Focus"},
 				{Key: "j/k", Desc: "Scroll"},
+				{Key: "[/]", Desc: "Sub-tab"},
+				{Key: "Tab", Desc: "Next"},
+				{Key: "?", Desc: "Help"},
+				{Key: "q", Desc: "Quit"},
+			}
+		case SubTabRemotes:
+			shortcuts = []components.Shortcut{
+				{Key: "1-3", Desc: "Focus"},
+				{Key: "j/k", Desc: "Select"},
+				{Key: "t", Desc: "Test Conn"},
+				{Key: "Enter", Desc: "Explorer"},
+				{Key: "r", Desc: "Refresh"},
 				{Key: "[/]", Desc: "Sub-tab"},
 				{Key: "Tab", Desc: "Next"},
 				{Key: "?", Desc: "Help"},
