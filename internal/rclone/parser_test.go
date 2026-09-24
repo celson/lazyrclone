@@ -2,6 +2,7 @@ package rclone
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -152,5 +153,22 @@ func TestMockClientOperations(t *testing.T) {
 	// Since context might timeout or finish, checking if stats callback fired
 	if !statsReceived {
 		t.Log("Note: fast run or cancelled before tick")
+	}
+}
+
+func TestNormalizeRclonePath(t *testing.T) {
+	norm1 := NormalizeRclonePath("local:~/Documents")
+	if strings.HasPrefix(norm1, "local:") || strings.HasPrefix(norm1, "~") {
+		t.Errorf("expected expanded path without local: and ~, got: %s", norm1)
+	}
+
+	norm2 := NormalizeRclonePath("gdrive:Backup_Teste")
+	if norm2 != "gdrive:Backup_Teste" {
+		t.Errorf("expected gdrive:Backup_Teste unchanged, got: %s", norm2)
+	}
+
+	norm3 := NormalizeRclonePath("local:/var/log")
+	if norm3 != "/var/log" {
+		t.Errorf("expected /var/log, got: %s", norm3)
 	}
 }

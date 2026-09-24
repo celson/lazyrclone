@@ -36,6 +36,24 @@ func NewRealClient(binaryPath string) *RealClient {
 	return &RealClient{binaryPath: binaryPath}
 }
 
+// NormalizeRclonePath converts paths like "local:~/Documents" or "~/Documents"
+// into normalized paths that rclone CLI understands (/home/user/Documents).
+func NormalizeRclonePath(p string) string {
+	p = strings.TrimSpace(p)
+	if strings.HasPrefix(p, "local:") {
+		p = strings.TrimPrefix(p, "local:")
+		if p == "" {
+			p = "."
+		}
+	}
+	if strings.HasPrefix(p, "~") {
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, strings.TrimPrefix(p, "~"))
+		}
+	}
+	return p
+}
+
 func (c *RealClient) IsAvailable() bool {
 	_, err := exec.LookPath(c.binaryPath)
 	return err == nil
@@ -138,21 +156,12 @@ func (c *RealClient) AboutRemote(ctx context.Context, remote string) (*AboutInfo
 }
 
 func (c *RealClient) ListDir(ctx context.Context, remotePath string) ([]FileItem, error) {
-	// If path is local without prefix or with "local:", list directory locally if rclone fails
-	if strings.HasPrefix(remotePath, "local:") {
-		localPath := strings.TrimPrefix(remotePath, "local:")
-		if localPath == "" {
-			localPath = "."
-		}
-		if strings.HasPrefix(localPath, "~") {
-			if home, err := os.UserHomeDir(); err == nil {
-				localPath = filepath.Join(home, strings.TrimPrefix(localPath, "~"))
-			}
-		}
-		return listLocalDir(localPath)
+	norm := NormalizeRclonePath(remotePath)
+	if !strings.Contains(norm, ":") {
+		return listLocalDir(norm)
 	}
 
-	cmd := exec.CommandContext(ctx, c.binaryPath, "lsjson", remotePath, "--max-depth", "1")
+	cmd := exec.CommandContext(ctx, c.binaryPath, "lsjson", norm, "--max-depth", "1")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("lsjson error: %w", err)
@@ -167,6 +176,14 @@ func (c *RealClient) ListDir(ctx context.Context, remotePath string) ([]FileItem
 }
 
 func listLocalDir(dirPath string) ([]FileItem, error) {
+	if dirPath == "" || dirPath == "." {
+		var err error
+		dirPath, err = os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return nil, err
@@ -190,23 +207,38 @@ func listLocalDir(dirPath string) ([]FileItem, error) {
 }
 
 func (c *RealClient) CreateDir(ctx context.Context, remotePath string) error {
-	cmd := exec.CommandContext(ctx, c.binaryPath, "mkdir", remotePath)
+	norm := NormalizeRclonePath(remotePath)
+	if !strings.Contains(norm, ":") {
+		return os.MkdirAll(norm, 0755)
+	}
+	cmd := exec.CommandContext(ctx, c.binaryPath, "mkdir", norm)
 	return cmd.Run()
 }
 
 func (c *RealClient) Delete(ctx context.Context, remotePath string, isDir bool) error {
+	norm := NormalizeRclonePath(remotePath)
+	if !strings.Contains(norm, ":") {
+		if isDir {
+			return os.RemoveAll(norm)
+		}
+		return os.Remove(norm)
+	}
+
 	var cmd *exec.Cmd
 	if isDir {
-		cmd = exec.CommandContext(ctx, c.binaryPath, "purge", remotePath)
+		cmd = exec.CommandContext(ctx, c.binaryPath, "purge", norm)
 	} else {
-		cmd = exec.CommandContext(ctx, c.binaryPath, "deletefile", remotePath)
+		cmd = exec.CommandContext(ctx, c.binaryPath, "deletefile", norm)
 	}
 	return cmd.Run()
 }
 
 func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest string, flags []string) (*DryRunResult, error) {
 	start := time.Now()
-	args := []string{op, src, dest, "--dry-run", "-v", "--use-json-log"}
+	cleanSrc := NormalizeRclonePath(src)
+	cleanDest := NormalizeRclonePath(dest)
+
+	args := []string{op, cleanSrc, cleanDest, "--dry-run", "-v", "--use-json-log"}
 	args = append(args, flags...)
 
 	cmd := exec.CommandContext(ctx, c.binaryPath, args...)
@@ -223,9 +255,22 @@ func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest str
 		Items: make([]DryRunItem, 0),
 	}
 
+	var errMessages []string
+
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		line := scanner.Text()
+		if strings.Contains(line, `"level":"critical"`) || strings.Contains(line, `"level":"error"`) {
+			var raw struct {
+				Msg string `json:"msg"`
+			}
+			if jsonErr := json.Unmarshal([]byte(line), &raw); jsonErr == nil && raw.Msg != "" {
+				errMessages = append(errMessages, raw.Msg)
+			} else {
+				errMessages = append(errMessages, line)
+			}
+		}
+
 		item, _, _ := ParseLogLine(line)
 		if item != nil {
 			result.Items = append(result.Items, *item)
@@ -242,16 +287,29 @@ func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest str
 		}
 	}
 
-	_ = cmd.Wait()
+	waitErr := cmd.Wait()
 	result.Duration = time.Since(start)
+
+	if waitErr != nil {
+		if len(errMessages) > 0 {
+			result.Err = fmt.Errorf("%s", strings.Join(errMessages, " | "))
+		} else {
+			result.Err = waitErr
+		}
+		return result, result.Err
+	}
+
 	return result, nil
 }
 
 func (c *RealClient) StartTransfer(ctx context.Context, job *TransferJob, onStats func(*StatsMsg), onLog func(string)) error {
+	cleanSrc := NormalizeRclonePath(job.Source)
+	cleanDest := NormalizeRclonePath(job.Destination)
+
 	args := []string{
 		job.Operation,
-		job.Source,
-		job.Destination,
+		cleanSrc,
+		cleanDest,
 		"--stats", "500ms",
 		"--stats-log-level", "NOTICE",
 		"--use-json-log",

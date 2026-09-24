@@ -7,12 +7,14 @@ import (
 )
 
 type rawRcloneLog struct {
-	Level  string    `json:"level"`
-	Msg    string    `json:"msg"`
-	Object string    `json:"object"`
-	Source string    `json:"source"`
-	Time   time.Time `json:"time"`
-	Stats  *StatsMsg `json:"stats,omitempty"`
+	Level   string    `json:"level"`
+	Msg     string    `json:"msg"`
+	Object  string    `json:"object"`
+	Source  string    `json:"source"`
+	Skipped string    `json:"skipped"`
+	Size    int64     `json:"size"`
+	Time    time.Time `json:"time"`
+	Stats   *StatsMsg `json:"stats,omitempty"`
 }
 
 // ParseLogLine parses a JSON log line from rclone
@@ -34,7 +36,12 @@ func ParseLogLine(line string) (*DryRunItem, *StatsMsg, string) {
 		return nil, raw.Stats, raw.Msg
 	}
 
-	// Check for dry-run actions in message
+	// Ignore purely directory time setting notifications in dry-run
+	if raw.Skipped == "set directory modification time" {
+		return nil, nil, raw.Msg
+	}
+
+	// Check for dry-run actions in message or skipped field
 	msgLower := strings.ToLower(raw.Msg)
 	obj := raw.Object
 	if obj == "" {
@@ -42,17 +49,19 @@ func ParseLogLine(line string) (*DryRunItem, *StatsMsg, string) {
 	}
 
 	if obj != "" {
-		if strings.Contains(msgLower, "copy") || strings.Contains(msgLower, "new") || strings.Contains(msgLower, "created") {
+		if raw.Skipped == "copy" || strings.Contains(msgLower, "copy") || strings.Contains(msgLower, "new") || strings.Contains(msgLower, "created") {
 			return &DryRunItem{
 				Action:  ActionAdd,
 				Path:    obj,
+				Size:    raw.Size,
 				Message: raw.Msg,
 			}, nil, raw.Msg
 		}
-		if strings.Contains(msgLower, "delete") || strings.Contains(msgLower, "removed") {
+		if raw.Skipped == "delete" || strings.Contains(msgLower, "delete") || strings.Contains(msgLower, "removed") {
 			return &DryRunItem{
 				Action:  ActionDelete,
 				Path:    obj,
+				Size:    raw.Size,
 				Message: raw.Msg,
 			}, nil, raw.Msg
 		}
@@ -60,6 +69,7 @@ func ParseLogLine(line string) (*DryRunItem, *StatsMsg, string) {
 			return &DryRunItem{
 				Action:  ActionUpdate,
 				Path:    obj,
+				Size:    raw.Size,
 				Message: raw.Msg,
 			}, nil, raw.Msg
 		}
