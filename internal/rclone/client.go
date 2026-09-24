@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -291,7 +292,11 @@ func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest str
 	result.Duration = time.Since(start)
 
 	if waitErr != nil {
-		if len(errMessages) > 0 {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			result.Err = fmt.Errorf("dry-run timed out after %v (tip: remove '--fast-list' if using Google Drive/Dropbox)", time.Since(start).Round(time.Second))
+		} else if errors.Is(ctx.Err(), context.Canceled) {
+			result.Err = fmt.Errorf("dry-run cancelled")
+		} else if len(errMessages) > 0 {
 			result.Err = fmt.Errorf("%s", strings.Join(errMessages, " | "))
 		} else {
 			result.Err = waitErr
@@ -342,5 +347,14 @@ func (c *RealClient) StartTransfer(ctx context.Context, job *TransferJob, onStat
 		}
 	}
 
-	return cmd.Wait()
+	waitErr := cmd.Wait()
+	if waitErr != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("transfer timed out")
+		} else if errors.Is(ctx.Err(), context.Canceled) {
+			return fmt.Errorf("transfer cancelled")
+		}
+		return waitErr
+	}
+	return nil
 }

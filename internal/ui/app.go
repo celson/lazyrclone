@@ -70,6 +70,7 @@ type AppModel struct {
 	RcloneVer     string
 	IsMock        bool
 	LogsOffset    int
+	DryRunCancel  context.CancelFunc
 }
 
 func NewAppModel(cfg *config.Config, client rclone.RcloneClient) *AppModel {
@@ -164,6 +165,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case DryRunFinishedMsg:
+		m.DryRunCancel = nil
 		m.DiffView.SetResult(msg.Result)
 		if msg.Result.Err != nil {
 			m.StatusMsg = fmt.Sprintf("Dry-run error: %v", msg.Result.Err)
@@ -503,6 +505,13 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.StatusMsg = fmt.Sprintf("Re-running dry-run for '%s'...", p.Name)
 				return m, m.runDryRunCmd(p)
 			}
+		case "x":
+			if m.DryRunCancel != nil {
+				m.DryRunCancel()
+				m.DryRunCancel = nil
+				m.StatusMsg = "Dry-run cancelled."
+				return m, clearStatusCmd()
+			}
 		}
 
 	case SubTabExplorer:
@@ -655,8 +664,14 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *AppModel) runDryRunCmd(p *config.Profile) tea.Cmd {
+	if m.DryRunCancel != nil {
+		m.DryRunCancel()
+		m.DryRunCancel = nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	m.DryRunCancel = cancel
+
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		res, err := m.Client.DryRun(ctx, string(p.Operation), p.Source, p.Destination, p.Flags)

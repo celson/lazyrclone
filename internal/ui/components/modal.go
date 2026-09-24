@@ -57,7 +57,7 @@ func NewModalManager() *ModalManager {
 	pInputs[3].Prompt = "Operation:   "
 
 	pInputs[4] = textinput.New()
-	pInputs[4].Placeholder = "--fast-list, --transfers 8"
+	pInputs[4].Placeholder = "e.g. --transfers 4, --checkers 8"
 	pInputs[4].Prompt = "Flags:       "
 
 	return &ModalManager{
@@ -102,7 +102,7 @@ func (m *ModalManager) ShowProfileEdit(p *config.Profile, onConfirm func()) {
 		m.ProfileInputs[1].SetValue("")
 		m.ProfileInputs[2].SetValue("")
 		m.ProfileInputs[3].SetValue("copy")
-		m.ProfileInputs[4].SetValue("--fast-list")
+		m.ProfileInputs[4].SetValue("")
 	}
 	for i := range m.ProfileInputs {
 		if i == 0 {
