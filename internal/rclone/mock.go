@@ -22,6 +22,14 @@ func (m *MockClient) IsMock() bool {
 	return true
 }
 
+func (m *MockClient) BinaryPath() string {
+	return "rclone"
+}
+
+func (m *MockClient) DeleteRemote(ctx context.Context, name string) error {
+	return nil
+}
+
 func (m *MockClient) Version() (string, error) {
 	return "rclone v1.68.0 (simulated demo mode)", nil
 }

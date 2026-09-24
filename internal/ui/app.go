@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"path"
 	"strings"
 	"time"
@@ -27,6 +28,10 @@ var MainSubTabNames = []string{"Diff Preview", "Dual Explorer", "Live Logs", "Re
 
 type DryRunFinishedMsg struct {
 	Result *rclone.DryRunResult
+}
+
+type ExecFinishedMsg struct {
+	Err error
 }
 
 type TransferUpdateMsg struct {
@@ -211,6 +216,18 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case ExecFinishedMsg:
+		m.RemotesView.Refresh()
+		m.ProfilesView.SetRemotes(m.RemotesView.Remotes)
+		if msg.Err != nil {
+			m.StatusMsg = fmt.Sprintf("Command exited with error: %v", msg.Err)
+			m.IsStatusErr = true
+		} else {
+			m.StatusMsg = "Rclone configuration updated. Remotes reloaded."
+			m.IsStatusErr = false
+		}
+		return m, clearStatusCmd()
 
 	case ClearStatusMsg:
 		m.StatusMsg = ""
@@ -684,6 +701,48 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.RemotesView.Refresh()
 			m.ProfilesView.SetRemotes(m.RemotesView.Remotes)
 			m.StatusMsg = "Remotes refreshed."
+		case "c", "n":
+			c := exec.Command(m.Client.BinaryPath(), "config")
+			return m, tea.ExecProcess(c, func(err error) tea.Msg {
+				return ExecFinishedMsg{Err: err}
+			})
+		case "e":
+			r := m.RemotesView.SelectedRemote()
+			if r == nil || r.Info.Name == "local:" {
+				m.StatusMsg = "Cannot reconnect local filesystem."
+				m.IsStatusErr = true
+				return m, clearStatusCmd()
+			}
+			c := exec.Command(m.Client.BinaryPath(), "config", "reconnect", r.Info.Name)
+			return m, tea.ExecProcess(c, func(err error) tea.Msg {
+				return ExecFinishedMsg{Err: err}
+			})
+		case "d", "x":
+			r := m.RemotesView.SelectedRemote()
+			if r == nil || r.Info.Name == "local:" {
+				m.StatusMsg = "Cannot delete local filesystem."
+				m.IsStatusErr = true
+				return m, clearStatusCmd()
+			}
+			remoteName := r.Info.Name
+			m.Modal.ShowConfirm(
+				"Delete Remote: "+remoteName,
+				fmt.Sprintf("Are you sure you want to permanently delete remote '%s' from rclone configuration?", remoteName),
+				true,
+				func() {
+					err := m.Client.DeleteRemote(context.Background(), remoteName)
+					m.RemotesView.Refresh()
+					m.ProfilesView.SetRemotes(m.RemotesView.Remotes)
+					if err != nil {
+						m.StatusMsg = fmt.Sprintf("Failed to delete remote: %v", err)
+						m.IsStatusErr = true
+					} else {
+						m.StatusMsg = fmt.Sprintf("Remote '%s' deleted successfully.", remoteName)
+						m.IsStatusErr = false
+					}
+				},
+			)
+			return m, nil
 		case "enter":
 			r := m.RemotesView.SelectedRemote()
 			if r != nil {
@@ -982,8 +1041,11 @@ func (m *AppModel) View() string {
 			shortcuts = []components.Shortcut{
 				{Key: "1-3", Desc: "Focus"},
 				{Key: "j/k", Desc: "Select"},
-				{Key: "t", Desc: "Test Conn"},
 				{Key: "Enter", Desc: "Explorer"},
+				{Key: "t", Desc: "Test"},
+				{Key: "c", Desc: "Config"},
+				{Key: "e", Desc: "Reconnect"},
+				{Key: "d", Desc: "Delete"},
 				{Key: "r", Desc: "Refresh"},
 				{Key: "[/]", Desc: "Sub-tab"},
 				{Key: "Tab", Desc: "Next"},

@@ -246,13 +246,14 @@ func (m *ModalManager) Render(screenWidth, screenHeight int) string {
 			"  x               Cancel / Abort running transfer",
 			"  c               Clear completed jobs",
 			"",
-			"Panel [3] Main View (Diff / Explorer / Logs):",
-			"  [ , ]           Switch between Diff, Explorer, and Logs",
-			"  j/k             Scroll diff items or logs",
-			"  ←/→             Switch between Source / Dest in Explorer",
-			"  Space           Select item in Explorer",
-			"  c               Copy selected file(s) to target pane",
-			"  s               Sync directory to target pane",
+			"Panel [3] Main View (Diff / Explorer / Logs / Remotes):",
+			"  [ , ]           Switch between Diff, Explorer, Logs, and Remotes",
+			"  j/k             Navigate or scroll items",
+			"  Explorer:       ←/→ switch panes, Enter enter dir, Backspace parent dir",
+			"                  Space select item, c copy to target, s sync to target",
+			"  Remotes:        Enter browse in explorer, t test connection/quota",
+			"                  c rclone config (CLI), e reconnect OAuth, d delete remote",
+			"                  r refresh remotes list",
 		}
 		helpText := lipgloss.NewStyle().Foreground(styles.ColorWhite).Render(strings.Join(helpLines, "\n"))
 		closeBtn := lipgloss.NewStyle().MarginTop(1).Foreground(styles.ColorSecondary).Render("Press [Esc] or [?] or [Enter] to close")

@@ -298,7 +298,7 @@ func (v *RemotesView) RenderLines(width, height int) []string {
 
 		lines = append(lines, "")
 		actionGuide := lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(
-			"  [t] Test Reachability    [Enter] Browse in Explorer    [r] Refresh Remotes",
+			"  [Enter] Browse  [t] Test  [c] Config (CLI)  [e] Reconnect  [d] Delete  [r] Refresh",
 		)
 		lines = append(lines, actionGuide)
 	}

@@ -26,8 +26,10 @@ func isValidOperation(op string) bool {
 type RcloneClient interface {
 	IsAvailable() bool
 	IsMock() bool
+	BinaryPath() string
 	Version() (string, error)
 	ListRemotes(ctx context.Context) ([]RemoteInfo, error)
+	DeleteRemote(ctx context.Context, name string) error
 	AboutRemote(ctx context.Context, remote string) (*AboutInfo, error)
 	ListDir(ctx context.Context, remotePath string) ([]FileItem, error)
 	CreateDir(ctx context.Context, remotePath string) error
@@ -72,6 +74,23 @@ func (c *RealClient) IsAvailable() bool {
 
 func (c *RealClient) IsMock() bool {
 	return false
+}
+
+func (c *RealClient) BinaryPath() string {
+	if c.binaryPath == "" {
+		return "rclone"
+	}
+	return c.binaryPath
+}
+
+func (c *RealClient) DeleteRemote(ctx context.Context, name string) error {
+	clean := strings.TrimSuffix(name, ":")
+	cmd := exec.CommandContext(ctx, c.binaryPath, "config", "delete", clean)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to delete remote %s: %w (%s)", clean, err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func (c *RealClient) Version() (string, error) {
