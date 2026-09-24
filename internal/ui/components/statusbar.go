@@ -44,7 +44,11 @@ func RenderStatusBar(width int, shortcuts []Shortcut, message string, isError bo
 	}
 
 	for _, sc := range shortcuts {
-		key := styles.ShortcutKeyStyle.Render(fmt.Sprintf("[%s]", sc.Key))
+		formattedKey := fmt.Sprintf("[%s]", sc.Key)
+		if strings.HasPrefix(sc.Key, "[") && strings.HasSuffix(sc.Key, "]") {
+			formattedKey = sc.Key
+		}
+		key := styles.ShortcutKeyStyle.Render(formattedKey)
 		desc := styles.ShortcutDescStyle.Render(sc.Desc)
 		item := fmt.Sprintf("%s %s", key, desc)
 		itemWidth := lipgloss.Width(item) + 2

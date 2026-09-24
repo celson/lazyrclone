@@ -10,12 +10,13 @@ import (
 type PanelID int
 
 const (
-	PanelProfiles PanelID = 0 // [1] Profiles & Remotes
-	PanelRuns     PanelID = 1 // [2] Transfers & Runs
-	PanelMain     PanelID = 2 // [3] Main View (Diff / Explorer / Logs)
+	PanelProfiles PanelID = 0 // [1] Profiles
+	PanelRemotes  PanelID = 1 // [2] Remotes
+	PanelRuns     PanelID = 2 // [3] Transfers & Runs
+	PanelMain     PanelID = 3 // [4] Main View
 )
 
-var PanelNames = []string{"1: Profiles", "2: Runs", "3: Main View"}
+var PanelNames = []string{"1: Profiles", "2: Remotes", "3: Transfers", "4: Main View"}
 
 func RenderHeader(width int, focusedPanel PanelID, rcloneVer string, isMock bool) string {
 	logo := lipgloss.NewStyle().

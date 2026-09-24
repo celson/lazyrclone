@@ -158,5 +158,5 @@ func (v *TransfersView) Render() string {
 		}
 	}
 
-	return components.RenderPanelBox(v.Width, v.Height, "[2] Transfers & Runs", nil, v.IsActive, contentLines)
+	return components.RenderPanelBox(v.Width, v.Height, "[3] Transfers", nil, v.IsActive, contentLines)
 }

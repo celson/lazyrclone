@@ -40,14 +40,20 @@ func RenderPanelBox(width, height int, title string, subTabs []SubTabItem, isAct
 		}
 	}
 
-	for _, tab := range subTabs {
-		if tab.IsActive {
-			tabStr := lipgloss.NewStyle().Bold(true).Foreground(styles.MochaCrust).Background(styles.MochaMauve).Render(" " + tab.Name + " ")
-			titleParts = append(titleParts, tabStr)
-		} else {
-			tabStr := lipgloss.NewStyle().Foreground(styles.MochaOverlay0).Render(" " + tab.Name + " ")
-			titleParts = append(titleParts, tabStr)
+	if len(subTabs) > 0 {
+		var tabGroupParts []string
+		for _, tab := range subTabs {
+			if tab.IsActive {
+				tabStr := lipgloss.NewStyle().Bold(true).Foreground(styles.MochaCrust).Background(styles.MochaMauve).Render(" " + tab.Name + " ")
+				tabGroupParts = append(tabGroupParts, tabStr)
+			} else {
+				tabStr := lipgloss.NewStyle().Foreground(styles.MochaOverlay0).Render(" " + tab.Name + " ")
+				tabGroupParts = append(tabGroupParts, tabStr)
+			}
 		}
+		tabsJoined := strings.Join(tabGroupParts, borderStyle.Render("─"))
+		tabIndicator := borderStyle.Render("< [ ] ") + tabsJoined + borderStyle.Render(" [ ] >")
+		titleParts = append(titleParts, tabIndicator)
 	}
 
 	titleCombined := strings.Join(titleParts, borderStyle.Render("─"))

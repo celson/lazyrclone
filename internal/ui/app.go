@@ -77,6 +77,7 @@ type AppModel struct {
 	IsMock        bool
 	LogsOffset    int
 	DryRunCancel  context.CancelFunc
+	LastSidePanel components.PanelID
 }
 
 func NewAppModel(cfg *config.Config, client rclone.RcloneClient) *AppModel {
@@ -93,6 +94,7 @@ func NewAppModel(cfg *config.Config, client rclone.RcloneClient) *AppModel {
 		Config:        cfg,
 		Client:        client,
 		FocusedPanel:  components.PanelProfiles,
+		LastSidePanel: components.PanelProfiles,
 		MainSubTab:    SubTabDiff,
 		ProfilesView:  pView,
 		ExplorerView:  eView,
@@ -246,41 +248,52 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "1":
 			m.FocusedPanel = components.PanelProfiles
+			m.LastSidePanel = components.PanelProfiles
+			m.MainSubTab = SubTabDiff
 			m.updatePanelsActive()
 			return m, nil
 
 		case "2":
-			m.FocusedPanel = components.PanelRuns
+			m.FocusedPanel = components.PanelRemotes
+			m.LastSidePanel = components.PanelRemotes
+			m.MainSubTab = SubTabRemotes
 			m.updatePanelsActive()
 			return m, nil
 
 		case "3":
-			m.FocusedPanel = components.PanelMain
+			m.FocusedPanel = components.PanelRuns
+			m.LastSidePanel = components.PanelRuns
+			m.MainSubTab = SubTabLogs
 			m.updatePanelsActive()
 			return m, nil
 
 		case "4":
 			m.FocusedPanel = components.PanelMain
-			m.MainSubTab = SubTabRemotes
 			m.updatePanelsActive()
 			return m, nil
 
 		case "tab":
-			// Cycle panels: 0 -> 1 -> 2 -> 0
-			m.FocusedPanel = (m.FocusedPanel + 1) % 3
+			// Cycle panels: 0 -> 1 -> 2 -> 3 -> 0
+			m.FocusedPanel = (m.FocusedPanel + 1) % 4
+			if m.FocusedPanel != components.PanelMain {
+				m.LastSidePanel = m.FocusedPanel
+			}
 			m.updatePanelsActive()
 			return m, nil
 
 		case "shift+tab":
 			if m.FocusedPanel == 0 {
-				m.FocusedPanel = 2
+				m.FocusedPanel = 3
 			} else {
 				m.FocusedPanel--
+			}
+			if m.FocusedPanel != components.PanelMain {
+				m.LastSidePanel = m.FocusedPanel
 			}
 			m.updatePanelsActive()
 			return m, nil
 
-		case "[":
+		case "[", ",":
 			if m.MainSubTab == 0 {
 				m.MainSubTab = SubTabRemotes
 			} else {
@@ -288,7 +301,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "]":
+		case "]", ".":
 			m.MainSubTab = (m.MainSubTab + 1) % 4
 			return m, nil
 
@@ -301,6 +314,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.FocusedPanel {
 		case components.PanelProfiles:
 			return m.handleProfilesKey(msg)
+		case components.PanelRemotes:
+			return m.handleRemotesKey(msg)
 		case components.PanelRuns:
 			return m.handleRunsKey(msg)
 		case components.PanelMain:
@@ -313,6 +328,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *AppModel) updatePanelsActive() {
 	m.ProfilesView.IsActive = (m.FocusedPanel == components.PanelProfiles)
+	m.RemotesView.IsActive = (m.FocusedPanel == components.PanelRemotes)
 	m.TransfersView.IsActive = (m.FocusedPanel == components.PanelRuns)
 }
 
@@ -405,7 +421,8 @@ func (m *AppModel) handleProfilesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.FocusedPanel = components.PanelMain
 		m.updatePanelsActive()
 	case "R":
-		m.FocusedPanel = components.PanelMain
+		m.FocusedPanel = components.PanelRemotes
+		m.LastSidePanel = components.PanelRemotes
 		m.MainSubTab = SubTabRemotes
 		m.updatePanelsActive()
 		return m, nil
@@ -486,14 +503,90 @@ func (m *AppModel) handleProfilesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *AppModel) handleRemotesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		m.RemotesView.MoveUp()
+	case "down", "j":
+		m.RemotesView.MoveDown()
+	case "l", "right":
+		m.FocusedPanel = components.PanelMain
+		m.updatePanelsActive()
+	case "t":
+		m.RemotesView.TestConnection()
+		m.StatusMsg = "Testing remote connection..."
+	case "r":
+		m.RemotesView.Refresh()
+		m.ProfilesView.SetRemotes(m.RemotesView.Remotes)
+		m.StatusMsg = "Remotes refreshed."
+	case "c", "n":
+		c := exec.Command(m.Client.BinaryPath(), "config")
+		return m, tea.ExecProcess(c, func(err error) tea.Msg {
+			return ExecFinishedMsg{Err: err}
+		})
+	case "e":
+		r := m.RemotesView.SelectedRemote()
+		if r == nil || r.Info.Name == "local:" {
+			m.StatusMsg = "Cannot reconnect local filesystem."
+			m.IsStatusErr = true
+			return m, clearStatusCmd()
+		}
+		c := exec.Command(m.Client.BinaryPath(), "config", "reconnect", r.Info.Name)
+		return m, tea.ExecProcess(c, func(err error) tea.Msg {
+			return ExecFinishedMsg{Err: err}
+		})
+	case "d", "x":
+		r := m.RemotesView.SelectedRemote()
+		if r == nil || r.Info.Name == "local:" {
+			m.StatusMsg = "Cannot delete local filesystem."
+			m.IsStatusErr = true
+			return m, clearStatusCmd()
+		}
+		remoteName := r.Info.Name
+		m.Modal.ShowConfirm(
+			"Delete Remote: "+remoteName,
+			fmt.Sprintf("Are you sure you want to permanently delete remote '%s' from rclone configuration?", remoteName),
+			true,
+			func() {
+				err := m.Client.DeleteRemote(context.Background(), remoteName)
+				m.RemotesView.Refresh()
+				m.ProfilesView.SetRemotes(m.RemotesView.Remotes)
+				if err != nil {
+					m.StatusMsg = fmt.Sprintf("Failed to delete remote: %v", err)
+					m.IsStatusErr = true
+				} else {
+					m.StatusMsg = fmt.Sprintf("Remote '%s' deleted successfully.", remoteName)
+					m.IsStatusErr = false
+				}
+			},
+		)
+		return m, nil
+	case "enter":
+		r := m.RemotesView.SelectedRemote()
+		if r != nil {
+			m.ExplorerView.Panes[m.ExplorerView.ActivePane].Remote = r.Info.Name
+			m.ExplorerView.Panes[m.ExplorerView.ActivePane].CurrentDir = ""
+			m.ExplorerView.Panes[m.ExplorerView.ActivePane].SelectedIdx = 0
+			m.ExplorerView.Panes[m.ExplorerView.ActivePane].ScrollOffset = 0
+			m.ExplorerView.LoadPane(m.ExplorerView.ActivePane)
+			m.MainSubTab = SubTabExplorer
+			m.FocusedPanel = components.PanelMain
+			m.updatePanelsActive()
+			m.StatusMsg = fmt.Sprintf("Opened remote '%s' in Dual Explorer.", r.Info.Name)
+		}
+	}
+	return m, nil
+}
+
 func (m *AppModel) handleRunsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
 		m.TransfersView.MoveUp()
 	case "down", "j":
 		m.TransfersView.MoveDown()
-	case "l", "right":
+	case "l", "right", "enter":
 		m.FocusedPanel = components.PanelMain
+		m.MainSubTab = SubTabLogs
 		m.updatePanelsActive()
 	case "c":
 		m.TransfersView.ClearCompleted()
@@ -513,9 +606,13 @@ func (m *AppModel) handleRunsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "esc":
+		m.FocusedPanel = m.LastSidePanel
+		m.updatePanelsActive()
+		return m, nil
 	case "h", "left":
 		if m.MainSubTab != SubTabExplorer {
-			m.FocusedPanel = components.PanelProfiles
+			m.FocusedPanel = m.LastSidePanel
 			m.updatePanelsActive()
 			return m, nil
 		}
@@ -689,72 +786,7 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case SubTabRemotes:
-		switch msg.String() {
-		case "up", "k":
-			m.RemotesView.MoveUp()
-		case "down", "j":
-			m.RemotesView.MoveDown()
-		case "t":
-			m.RemotesView.TestConnection()
-			m.StatusMsg = "Testing remote connection..."
-		case "r":
-			m.RemotesView.Refresh()
-			m.ProfilesView.SetRemotes(m.RemotesView.Remotes)
-			m.StatusMsg = "Remotes refreshed."
-		case "c", "n":
-			c := exec.Command(m.Client.BinaryPath(), "config")
-			return m, tea.ExecProcess(c, func(err error) tea.Msg {
-				return ExecFinishedMsg{Err: err}
-			})
-		case "e":
-			r := m.RemotesView.SelectedRemote()
-			if r == nil || r.Info.Name == "local:" {
-				m.StatusMsg = "Cannot reconnect local filesystem."
-				m.IsStatusErr = true
-				return m, clearStatusCmd()
-			}
-			c := exec.Command(m.Client.BinaryPath(), "config", "reconnect", r.Info.Name)
-			return m, tea.ExecProcess(c, func(err error) tea.Msg {
-				return ExecFinishedMsg{Err: err}
-			})
-		case "d", "x":
-			r := m.RemotesView.SelectedRemote()
-			if r == nil || r.Info.Name == "local:" {
-				m.StatusMsg = "Cannot delete local filesystem."
-				m.IsStatusErr = true
-				return m, clearStatusCmd()
-			}
-			remoteName := r.Info.Name
-			m.Modal.ShowConfirm(
-				"Delete Remote: "+remoteName,
-				fmt.Sprintf("Are you sure you want to permanently delete remote '%s' from rclone configuration?", remoteName),
-				true,
-				func() {
-					err := m.Client.DeleteRemote(context.Background(), remoteName)
-					m.RemotesView.Refresh()
-					m.ProfilesView.SetRemotes(m.RemotesView.Remotes)
-					if err != nil {
-						m.StatusMsg = fmt.Sprintf("Failed to delete remote: %v", err)
-						m.IsStatusErr = true
-					} else {
-						m.StatusMsg = fmt.Sprintf("Remote '%s' deleted successfully.", remoteName)
-						m.IsStatusErr = false
-					}
-				},
-			)
-			return m, nil
-		case "enter":
-			r := m.RemotesView.SelectedRemote()
-			if r != nil {
-				m.ExplorerView.Panes[m.ExplorerView.ActivePane].Remote = r.Info.Name
-				m.ExplorerView.Panes[m.ExplorerView.ActivePane].CurrentDir = ""
-				m.ExplorerView.Panes[m.ExplorerView.ActivePane].SelectedIdx = 0
-				m.ExplorerView.Panes[m.ExplorerView.ActivePane].ScrollOffset = 0
-				m.ExplorerView.LoadPane(m.ExplorerView.ActivePane)
-				m.MainSubTab = SubTabExplorer
-				m.StatusMsg = fmt.Sprintf("Opened remote '%s' in Dual Explorer.", r.Info.Name)
-			}
-		}
+		return m.handleRemotesKey(msg)
 	}
 
 	return m, nil
@@ -850,19 +882,19 @@ func (m *AppModel) startTransferCmd(job *rclone.TransferJob) tea.Cmd {
 
 func (m *AppModel) renderMainPanel(width, height int) string {
 	var subTabs []components.SubTabItem
-	if width < 75 {
+	if width < 85 {
 		subTabs = []components.SubTabItem{
 			{Name: "Diff", IsActive: m.MainSubTab == SubTabDiff},
 			{Name: "Explorer", IsActive: m.MainSubTab == SubTabExplorer},
 			{Name: "Logs", IsActive: m.MainSubTab == SubTabLogs},
-			{Name: "Remotes", IsActive: m.MainSubTab == SubTabRemotes},
+			{Name: "Remote", IsActive: m.MainSubTab == SubTabRemotes},
 		}
 	} else {
 		subTabs = []components.SubTabItem{
 			{Name: "Diff Preview", IsActive: m.MainSubTab == SubTabDiff},
 			{Name: "Dual Explorer", IsActive: m.MainSubTab == SubTabExplorer},
 			{Name: "Live Logs", IsActive: m.MainSubTab == SubTabLogs},
-			{Name: "Remotes", IsActive: m.MainSubTab == SubTabRemotes},
+			{Name: "Remote Info", IsActive: m.MainSubTab == SubTabRemotes},
 		}
 	}
 
@@ -873,13 +905,13 @@ func (m *AppModel) renderMainPanel(width, height int) string {
 		m.DiffView.Width = width - 4
 		m.DiffView.Height = height - 2
 		lines := m.DiffView.RenderLines()
-		return components.RenderPanelBox(width, height, "[3] Main View", subTabs, isActive, lines)
+		return components.RenderPanelBox(width, height, "[4] Main View", subTabs, isActive, lines)
 
 	case SubTabExplorer:
 		m.ExplorerView.SetSize(width-2, height-2)
 		explorerContent := m.ExplorerView.Render()
 		lines := strings.Split(explorerContent, "\n")
-		return components.RenderPanelBox(width, height, "[3] Main View", subTabs, isActive, lines)
+		return components.RenderPanelBox(width, height, "[4] Main View", subTabs, isActive, lines)
 
 	case SubTabLogs:
 		job := m.TransfersView.ActiveJob()
@@ -905,11 +937,11 @@ func (m *AppModel) renderMainPanel(width, height int) string {
 				lines = append(lines, "  "+l)
 			}
 		}
-		return components.RenderPanelBox(width, height, "[3] Main View", subTabs, isActive, lines)
+		return components.RenderPanelBox(width, height, "[4] Main View", subTabs, isActive, lines)
 
 	case SubTabRemotes:
-		lines := m.RemotesView.RenderLines(width, height)
-		return components.RenderPanelBox(width, height, "[3] Main View", subTabs, isActive, lines)
+		lines := m.RemotesView.RenderDetails(width, height)
+		return components.RenderPanelBox(width, height, "[4] Main View", subTabs, isActive, lines)
 	}
 
 	return ""
@@ -939,18 +971,31 @@ func (m *AppModel) View() string {
 	}
 	rightWidth := m.Width - leftWidth
 
-	leftTopHeight := (availHeight * 55) / 100
-	if leftTopHeight < 6 {
-		leftTopHeight = 6
+	// 3 panels on the left:
+	// h1: Profiles (~34%)
+	// h2: Remotes (~33%)
+	// h3: Transfers (remaining ~33%)
+	h1 := (availHeight * 34) / 100
+	if h1 < 4 {
+		h1 = 4
 	}
-	leftBottomHeight := availHeight - leftTopHeight
+	h2 := (availHeight * 33) / 100
+	if h2 < 4 {
+		h2 = 4
+	}
+	h3 := availHeight - h1 - h2
+	if h3 < 4 {
+		h3 = 4
+	}
 
-	m.ProfilesView.SetSize(leftWidth, leftTopHeight)
-	m.TransfersView.SetSize(leftWidth, leftBottomHeight)
+	m.ProfilesView.SetSize(leftWidth, h1)
+	m.RemotesView.SetSize(leftWidth, h2)
+	m.TransfersView.SetSize(leftWidth, h3)
 
 	leftTop := m.ProfilesView.Render()
+	leftMid := m.RemotesView.Render()
 	leftBottom := m.TransfersView.Render()
-	leftCol := leftTop + "\n" + leftBottom
+	leftCol := leftTop + "\n" + leftMid + "\n" + leftBottom
 
 	rightCol := m.renderMainPanel(rightWidth, availHeight)
 
@@ -981,25 +1026,41 @@ func (m *AppModel) View() string {
 	switch m.FocusedPanel {
 	case components.PanelProfiles:
 		shortcuts = []components.Shortcut{
-			{Key: "1-3", Desc: "Focus"},
+			{Key: "1-4", Desc: "Focus"},
 			{Key: "d", Desc: "Dry-Run"},
 			{Key: "r/Enter", Desc: "Run"},
-			{Key: "R", Desc: "Remotes"},
+			{Key: "l", Desc: "Main"},
+			{Key: "[ / ]", Desc: "Tabs"},
 			{Key: "n", Desc: "New"},
 			{Key: "e", Desc: "Edit"},
 			{Key: "x", Desc: "Delete"},
-			{Key: "[/]", Desc: "Sub-tab"},
+			{Key: "Tab", Desc: "Next"},
+			{Key: "?", Desc: "Help"},
+			{Key: "q", Desc: "Quit"},
+		}
+	case components.PanelRemotes:
+		shortcuts = []components.Shortcut{
+			{Key: "1-4", Desc: "Focus"},
+			{Key: "j/k", Desc: "Select"},
+			{Key: "Enter", Desc: "Explorer"},
+			{Key: "t", Desc: "Test"},
+			{Key: "c", Desc: "Config"},
+			{Key: "e", Desc: "Reconnect"},
+			{Key: "d", Desc: "Delete"},
+			{Key: "r", Desc: "Refresh"},
+			{Key: "[ / ]", Desc: "Tabs"},
 			{Key: "Tab", Desc: "Next"},
 			{Key: "?", Desc: "Help"},
 			{Key: "q", Desc: "Quit"},
 		}
 	case components.PanelRuns:
 		shortcuts = []components.Shortcut{
-			{Key: "1-3", Desc: "Focus"},
+			{Key: "1-4", Desc: "Focus"},
 			{Key: "j/k", Desc: "Select"},
+			{Key: "Enter", Desc: "Logs"},
 			{Key: "x", Desc: "Cancel"},
 			{Key: "c", Desc: "Clear Done"},
-			{Key: "[/]", Desc: "Sub-tab"},
+			{Key: "[ / ]", Desc: "Tabs"},
 			{Key: "Tab", Desc: "Next"},
 			{Key: "?", Desc: "Help"},
 			{Key: "q", Desc: "Quit"},
@@ -1008,47 +1069,49 @@ func (m *AppModel) View() string {
 		switch m.MainSubTab {
 		case SubTabDiff:
 			shortcuts = []components.Shortcut{
-				{Key: "1-3", Desc: "Focus"},
+				{Key: "1-4", Desc: "Panels"},
 				{Key: "j/k", Desc: "Scroll"},
 				{Key: "d", Desc: "Re-run"},
-				{Key: "[/]", Desc: "Sub-tab"},
+				{Key: "[ / ]", Desc: "Tabs"},
+				{Key: "Esc", Desc: "Back"},
 				{Key: "Tab", Desc: "Next"},
 				{Key: "?", Desc: "Help"},
 				{Key: "q", Desc: "Quit"},
 			}
 		case SubTabExplorer:
 			shortcuts = []components.Shortcut{
-				{Key: "←/→", Desc: "Switch Pane"},
+				{Key: "1-4", Desc: "Panels"},
+				{Key: "←/→", Desc: "Pane"},
 				{Key: "Enter", Desc: "Open"},
 				{Key: "Bksp", Desc: "Up"},
 				{Key: "Space", Desc: "Select"},
 				{Key: "c", Desc: "Copy"},
 				{Key: "s", Desc: "Sync"},
-				{Key: "[/]", Desc: "Sub-tab"},
-				{Key: "Tab", Desc: "Next"},
+				{Key: "[ / ]", Desc: "Tabs"},
+				{Key: "Esc", Desc: "Back"},
 				{Key: "?", Desc: "Help"},
 			}
 		case SubTabLogs:
 			shortcuts = []components.Shortcut{
-				{Key: "1-3", Desc: "Focus"},
+				{Key: "1-4", Desc: "Panels"},
 				{Key: "j/k", Desc: "Scroll"},
-				{Key: "[/]", Desc: "Sub-tab"},
+				{Key: "[ / ]", Desc: "Tabs"},
+				{Key: "Esc", Desc: "Back"},
 				{Key: "Tab", Desc: "Next"},
 				{Key: "?", Desc: "Help"},
 				{Key: "q", Desc: "Quit"},
 			}
 		case SubTabRemotes:
 			shortcuts = []components.Shortcut{
-				{Key: "1-3", Desc: "Focus"},
+				{Key: "1-4", Desc: "Panels"},
 				{Key: "j/k", Desc: "Select"},
 				{Key: "Enter", Desc: "Explorer"},
 				{Key: "t", Desc: "Test"},
 				{Key: "c", Desc: "Config"},
 				{Key: "e", Desc: "Reconnect"},
 				{Key: "d", Desc: "Delete"},
-				{Key: "r", Desc: "Refresh"},
-				{Key: "[/]", Desc: "Sub-tab"},
-				{Key: "Tab", Desc: "Next"},
+				{Key: "[ / ]", Desc: "Tabs"},
+				{Key: "Esc", Desc: "Back"},
 				{Key: "?", Desc: "Help"},
 				{Key: "q", Desc: "Quit"},
 			}
