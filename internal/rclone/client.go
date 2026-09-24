@@ -2,6 +2,7 @@ package rclone
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,15 @@ import (
 	"strings"
 	"time"
 )
+
+func isValidOperation(op string) bool {
+	switch strings.ToLower(strings.TrimSpace(op)) {
+	case "copy", "sync", "move", "bisync", "check":
+		return true
+	default:
+		return false
+	}
+}
 
 type RcloneClient interface {
 	IsAvailable() bool
@@ -167,8 +177,24 @@ func (c *RealClient) ListDir(ctx context.Context, remotePath string) ([]FileItem
 	}
 
 	cmd := exec.CommandContext(ctx, c.binaryPath, "lsjson", norm, "--max-depth", "1")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		errStr := strings.TrimSpace(stderr.String())
+		var exitErr *exec.ExitError
+		if (errors.As(err, &exitErr) && exitErr.ExitCode() == 3) || strings.Contains(strings.ToLower(errStr), "directory not found") {
+			return nil, fmt.Errorf("directory not found: '%s' does not exist yet", norm)
+		}
+		if errStr != "" {
+			lines := strings.Split(errStr, "\n")
+			for _, l := range lines {
+				if strings.Contains(l, "ERROR") {
+					return nil, fmt.Errorf("%s", strings.TrimSpace(l))
+				}
+			}
+			return nil, fmt.Errorf("%s", strings.TrimSpace(lines[len(lines)-1]))
+		}
 		return nil, fmt.Errorf("lsjson error: %w", err)
 	}
 
@@ -222,6 +248,17 @@ func (c *RealClient) CreateDir(ctx context.Context, remotePath string) error {
 
 func (c *RealClient) Delete(ctx context.Context, remotePath string, isDir bool) error {
 	norm := NormalizeRclonePath(remotePath)
+	clean := filepath.Clean(norm)
+
+	// Security guard: prevent accidental deletion of root or current directory
+	if clean == "/" || clean == "." || clean == "" || norm == "" || norm == "/" {
+		return fmt.Errorf("refusing to delete root path %q", norm)
+	}
+	// Security guard for remotes: prevent purging entire remote root (e.g. "gdrive:", "gdrive:/")
+	if strings.HasSuffix(norm, ":") || strings.HasSuffix(norm, ":/") || strings.HasSuffix(norm, ":.") {
+		return fmt.Errorf("refusing to delete root of remote %q", norm)
+	}
+
 	if !strings.Contains(norm, ":") {
 		if isDir {
 			return os.RemoveAll(norm)
@@ -239,6 +276,9 @@ func (c *RealClient) Delete(ctx context.Context, remotePath string, isDir bool) 
 }
 
 func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest string, flags []string) (*DryRunResult, error) {
+	if !isValidOperation(op) {
+		return nil, fmt.Errorf("unsupported or invalid rclone operation: %q", op)
+	}
 	start := time.Now()
 	cleanSrc := NormalizeRclonePath(src)
 	cleanDest := NormalizeRclonePath(dest)
@@ -312,6 +352,9 @@ func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest str
 }
 
 func (c *RealClient) StartTransfer(ctx context.Context, job *TransferJob, onStats func(*StatsMsg), onLog func(string)) error {
+	if !isValidOperation(job.Operation) {
+		return fmt.Errorf("unsupported or invalid rclone operation: %q", job.Operation)
+	}
 	cleanSrc := NormalizeRclonePath(job.Source)
 	cleanDest := NormalizeRclonePath(job.Destination)
 

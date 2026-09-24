@@ -204,3 +204,19 @@ func TestIsSensitiveConfigKey(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteSafetyGuard(t *testing.T) {
+	client := &RealClient{binaryPath: "rclone"}
+	ctx := context.Background()
+
+	dangerousPaths := []string{
+		"", "/", ".", "local:/", "gdrive:", "gdrive:/", "s3:", "s3:/",
+	}
+
+	for _, p := range dangerousPaths {
+		err := client.Delete(ctx, p, true)
+		if err == nil {
+			t.Errorf("expected error deleting dangerous path %q, got nil", p)
+		}
+	}
+}

@@ -218,7 +218,13 @@ func (v *ExplorerView) renderPane(idx int, paneWidth, paneHeight int) string {
 	if p.Loading {
 		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(" Loading contents..."))
 	} else if p.ErrorMsg != "" {
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(" Error: "+p.ErrorMsg))
+		if strings.Contains(strings.ToLower(p.ErrorMsg), "not found") {
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorWarning).Render(" 📁 Remote folder not found."))
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" It will be created automatically on sync/copy,"))
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(" or press [n] to create directory now."))
+		} else {
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(" Error: "+p.ErrorMsg))
+		}
 	} else if len(p.Items) == 0 {
 		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" (Directory empty)"))
 	} else {
