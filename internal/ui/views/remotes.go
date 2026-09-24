@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/celson/lazyrclone/internal/rclone"
 	"github.com/celson/lazyrclone/internal/ui/styles"
@@ -52,15 +53,25 @@ func (v *RemotesView) Refresh() {
 		item := &RemoteItem{
 			Info: r,
 		}
-		if about, err := v.Client.AboutRemote(context.Background(), r.Name); err == nil {
-			item.About = about
-		}
 		items = append(items, item)
 	}
 
 	v.Remotes = items
 	if v.SelectedIdx >= len(v.Remotes) {
 		v.SelectedIdx = 0
+	}
+
+	// Fetch quota asynchronously in background so app starts instantly
+	for _, it := range items {
+		if it.Info.Name != "local:" {
+			go func(target *RemoteItem) {
+				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+				defer cancel()
+				if about, err := v.Client.AboutRemote(ctx, target.Info.Name); err == nil {
+					target.About = about
+				}
+			}(it)
+		}
 	}
 }
 

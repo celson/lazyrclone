@@ -59,8 +59,8 @@ func (c *RealClient) Version() (string, error) {
 }
 
 func (c *RealClient) ListRemotes(ctx context.Context) ([]RemoteInfo, error) {
-	// First try config dumped to get types as well
-	cmd := exec.CommandContext(ctx, c.binaryPath, "config", "dumped")
+	// First try config dump to get types as well
+	cmd := exec.CommandContext(ctx, c.binaryPath, "config", "dump")
 	out, err := cmd.Output()
 	if err == nil {
 		var dumped map[string]map[string]interface{}
@@ -124,8 +124,14 @@ func (c *RealClient) AboutRemote(ctx context.Context, remote string) (*AboutInfo
 		return nil, err
 	}
 
+	start := strings.Index(string(out), "{")
+	end := strings.LastIndex(string(out), "}")
+	if start == -1 || end == -1 || end <= start {
+		return nil, fmt.Errorf("no json found in about output")
+	}
+
 	var info AboutInfo
-	if err := json.Unmarshal(out, &info); err != nil {
+	if err := json.Unmarshal(out[start:end+1], &info); err != nil {
 		return nil, err
 	}
 	return &info, nil

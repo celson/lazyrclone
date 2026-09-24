@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/celson/lazyrclone/internal/rclone"
 	"github.com/celson/lazyrclone/internal/ui/components"
@@ -64,19 +65,24 @@ func (v *ExplorerView) LoadPane(paneIdx int) {
 		remotePath += strings.TrimPrefix(p.CurrentDir, "/")
 	}
 
-	items, err := v.Client.ListDir(context.Background(), remotePath)
-	p.Loading = false
-	if err != nil {
-		p.ErrorMsg = err.Error()
-		p.Items = nil
-		return
-	}
+	go func(targetPane *ExplorerPane, path string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-	p.Items = items
-	if p.SelectedIdx >= len(items) {
-		p.SelectedIdx = 0
-	}
-	p.ScrollOffset = 0
+		items, err := v.Client.ListDir(ctx, path)
+		targetPane.Loading = false
+		if err != nil {
+			targetPane.ErrorMsg = err.Error()
+			targetPane.Items = nil
+			return
+		}
+
+		targetPane.Items = items
+		if targetPane.SelectedIdx >= len(items) {
+			targetPane.SelectedIdx = 0
+		}
+		targetPane.ScrollOffset = 0
+	}(p, remotePath)
 }
 
 func (v *ExplorerView) SetSize(width, height int) {
