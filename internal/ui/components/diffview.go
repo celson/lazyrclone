@@ -48,7 +48,7 @@ func (dv *DiffView) MoveDown() {
 	}
 	if dv.Cursor < len(dv.Result.Items)-1 {
 		dv.Cursor++
-		visibleLines := dv.Height - 4 // account for summary and padding
+		visibleLines := dv.Height - 3
 		if visibleLines < 1 {
 			visibleLines = 1
 		}
@@ -58,19 +58,20 @@ func (dv *DiffView) MoveDown() {
 	}
 }
 
-func (dv *DiffView) Render() string {
+func (dv *DiffView) RenderLines() []string {
 	if dv.Result == nil {
-		return lipgloss.NewStyle().
-			Foreground(styles.ColorMuted).
-			Padding(2, 2).
-			Render("No dry-run diff available. Select a profile and press [d] to run an honest dry-run.")
+		return []string{
+			"",
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  No dry-run diff available."),
+			lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  Select a profile in [1] and press [d] to run an honest dry-run diff preview."),
+		}
 	}
 
 	if dv.Result.Err != nil {
-		return lipgloss.NewStyle().
-			Foreground(styles.ColorDanger).
-			Padding(2, 2).
-			Render(fmt.Sprintf("Dry-run error: %v", dv.Result.Err))
+		return []string{
+			"",
+			lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(fmt.Sprintf("  Dry-run error: %v", dv.Result.Err)),
+		}
 	}
 
 	// Summary bar
@@ -81,21 +82,21 @@ func (dv *DiffView) Render() string {
 	durationStr := lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(fmt.Sprintf("(diff in %v)", dv.Result.Duration.Round(100)))
 
 	summary := lipgloss.JoinHorizontal(lipgloss.Center,
-		"Diff Summary: ", addBadge, " | ", updateBadge, " | ", deleteBadge, " | ", equalBadge, "  ", durationStr,
+		"  Diff Summary: ", addBadge, " | ", updateBadge, " | ", deleteBadge, " | ", equalBadge, "  ", durationStr,
 	)
 
-	separator := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(strings.Repeat("─", dv.Width-4))
+	separator := lipgloss.NewStyle().Foreground(styles.ColorBorder).Render(strings.Repeat("─", dv.Width))
 
-	visibleCount := dv.Height - 4
+	visibleCount := dv.Height - 3
 	if visibleCount < 1 {
 		visibleCount = 1
 	}
 
-	lines := make([]string, 0, visibleCount)
+	lines := []string{summary, separator}
 	items := dv.Result.Items
 
 	if len(items) == 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ Destination is already synchronized! No changes needed."))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("  ✓ Destination is already synchronized! No changes needed."))
 	} else {
 		endIdx := dv.ScrollOffset + visibleCount
 		if endIdx > len(items) {
@@ -127,9 +128,9 @@ func (dv *DiffView) Render() string {
 				sizeStr = fmt.Sprintf("[%s]", rclone.FormatBytes(item.Size))
 			}
 
-			line := fmt.Sprintf("%-10s %-32s %-12s %s", badge, item.Path, sizeStr, item.Message)
+			line := fmt.Sprintf(" %-10s %-30s %-10s %s", badge, item.Path, sizeStr, item.Message)
 			if i == dv.Cursor {
-				line = styles.SelectedItemStyle.Width(dv.Width - 6).Render(line)
+				line = styles.SelectedItemStyle.Width(dv.Width).Render(line)
 			} else {
 				line = lineStyle.Render(line)
 			}
@@ -137,6 +138,9 @@ func (dv *DiffView) Render() string {
 		}
 	}
 
-	content := strings.Join(lines, "\n")
-	return lipgloss.JoinVertical(lipgloss.Left, summary, separator, content)
+	return lines
+}
+
+func (dv *DiffView) Render() string {
+	return strings.Join(dv.RenderLines(), "\n")
 }

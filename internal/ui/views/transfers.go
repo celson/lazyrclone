@@ -2,9 +2,9 @@ package views
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/celson/lazyrclone/internal/rclone"
+	"github.com/celson/lazyrclone/internal/ui/components"
 	"github.com/celson/lazyrclone/internal/ui/styles"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -64,17 +64,16 @@ func (v *TransfersView) ClearCompleted() {
 }
 
 func (v *TransfersView) Render() string {
-	panelStyle := styles.PanelStyle
-	title := styles.PanelTitleStyle.Render(" [2] Transfers & Runs ")
-	if v.IsActive {
-		panelStyle = styles.ActivePanelStyle
-		title = styles.ActivePanelTitleStyle.Render(" [2] Transfers & Runs ")
+	innerWidth := v.Width - 2
+	if innerWidth < 5 {
+		innerWidth = 5
 	}
 
 	var contentLines []string
 
 	if len(v.Jobs) == 0 {
-		contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Padding(1, 1).Render("No runs recorded yet.\nSelect profile and press [r]."))
+		contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" No runs recorded yet."))
+		contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" Select profile and press [r]."))
 	} else {
 		for i, j := range v.Jobs {
 			statusBadge := lipgloss.NewStyle().Foreground(styles.ColorWarning).Render("● RUN")
@@ -94,28 +93,28 @@ func (v *TransfersView) Render() string {
 				pct = 100
 			}
 
-			maxNameWidth := v.Width - 14
-			if maxNameWidth < 10 {
-				maxNameWidth = 10
+			maxNameWidth := innerWidth - 14
+			if maxNameWidth < 6 {
+				maxNameWidth = 6
 			}
 			displayName := j.Name
 			if len(displayName) > maxNameWidth {
 				displayName = displayName[:maxNameWidth-3] + "..."
 			}
 
-			line := fmt.Sprintf("%s %-20s %3d%%", statusBadge, displayName, pct)
+			line := fmt.Sprintf("%s %-*s %3d%%", statusBadge, maxNameWidth, displayName, pct)
 
 			if i == v.SelectedJob {
-				contentLines = append(contentLines, styles.SelectedItemStyle.Width(v.Width-4).Render("▶ "+line))
+				contentLines = append(contentLines, styles.SelectedItemStyle.Width(innerWidth).Render("▶ "+line))
 			} else {
 				contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorWhite).Render("  "+line))
 			}
 
 			// If this is the active selected job, show its mini progress bar & metrics
 			if i == v.SelectedJob {
-				barWidth := v.Width - 12
-				if barWidth < 8 {
-					barWidth = 8
+				barWidth := innerWidth - 10
+				if barWidth < 6 {
+					barWidth = 6
 				}
 				progressBar := styles.RenderProgressBar(barWidth, pct)
 				contentLines = append(contentLines, fmt.Sprintf("   %s %3d%%", progressBar, pct))
@@ -126,8 +125,8 @@ func (v *TransfersView) Render() string {
 						rclone.FormatSpeed(j.LatestStats.Speed),
 						rclone.FormatDuration(j.LatestStats.ETA),
 					)
-					if len(metricLine) > v.Width-4 && v.Width > 8 {
-						metricLine = metricLine[:v.Width-7] + "..."
+					if len(metricLine) > innerWidth-2 && innerWidth > 6 {
+						metricLine = metricLine[:innerWidth-5] + "..."
 					}
 					contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorActive).Render(metricLine))
 				}
@@ -135,8 +134,5 @@ func (v *TransfersView) Render() string {
 		}
 	}
 
-	return panelStyle.
-		Width(v.Width).
-		Height(v.Height).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, "\n", strings.Join(contentLines, "\n")))
+	return components.RenderPanelBox(v.Width, v.Height, "[2] Transfers & Runs", nil, v.IsActive, contentLines)
 }

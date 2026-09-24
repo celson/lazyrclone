@@ -6,6 +6,7 @@ import (
 
 	"github.com/celson/lazyrclone/internal/config"
 	"github.com/celson/lazyrclone/internal/rclone"
+	"github.com/celson/lazyrclone/internal/ui/components"
 	"github.com/celson/lazyrclone/internal/ui/styles"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -66,24 +67,27 @@ func (v *ProfilesView) SelectedProfile() *config.Profile {
 }
 
 func (v *ProfilesView) Render() string {
-	panelStyle := styles.PanelStyle
-	title := styles.PanelTitleStyle.Render(" [1] Profiles ")
-	if v.IsActive {
-		panelStyle = styles.ActivePanelStyle
-		title = styles.ActivePanelTitleStyle.Render(" [1] Profiles (Tasks) ")
+	innerWidth := v.Width - 2
+	innerHeight := v.Height - 2
+	if innerWidth < 5 {
+		innerWidth = 5
 	}
-
-	innerContentHeight := v.Height - 3
-	if innerContentHeight < 3 {
-		innerContentHeight = 3
+	if innerHeight < 2 {
+		innerHeight = 2
 	}
 
 	var lines []string
 
 	if len(v.Config.Profiles) == 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Padding(1, 1).Render("No profiles saved.\nPress [n] to create."))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" No profiles saved."))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" Press [n] to create."))
 	} else {
-		visibleCount := (innerContentHeight - 3) / 2
+		remotesFooterHeight := 0
+		if len(v.Remotes) > 0 {
+			remotesFooterHeight = 2
+		}
+
+		visibleCount := (innerHeight - remotesFooterHeight) / 2
 		if visibleCount < 1 {
 			visibleCount = 1
 		}
@@ -107,9 +111,9 @@ func (v *ProfilesView) Render() string {
 
 			opBadge := lipgloss.NewStyle().Bold(true).Foreground(opColor).Render(fmt.Sprintf("[%s]", strings.ToUpper(string(p.Operation))))
 
-			maxNameWidth := v.Width - 14
-			if maxNameWidth < 10 {
-				maxNameWidth = 10
+			maxNameWidth := innerWidth - 10
+			if maxNameWidth < 6 {
+				maxNameWidth = 6
 			}
 			displayName := p.Name
 			if len(displayName) > maxNameWidth {
@@ -118,55 +122,44 @@ func (v *ProfilesView) Render() string {
 
 			headerLine := fmt.Sprintf("%s %s", opBadge, displayName)
 
-			maxPathWidth := v.Width - 6
-			if maxPathWidth < 12 {
-				maxPathWidth = 12
-			}
 			transferLine := fmt.Sprintf("%s ➔ %s", p.Source, p.Destination)
-			if len(transferLine) > maxPathWidth {
-				transferLine = transferLine[:maxPathWidth-3] + "..."
+			if len(transferLine) > innerWidth-4 && innerWidth > 8 {
+				transferLine = transferLine[:innerWidth-7] + "..."
 			}
-			subLine := lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  " + transferLine)
 
 			if i == v.SelectedIdx {
-				cursorStyle := styles.SelectedItemStyle.Width(v.Width - 4)
+				cursorStyle := styles.SelectedItemStyle.Width(innerWidth)
 				lines = append(lines, cursorStyle.Render("▶ "+headerLine))
 				lines = append(lines, cursorStyle.Render("  "+transferLine))
 			} else {
 				lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorWhite).Render("  "+headerLine))
-				lines = append(lines, subLine)
+				lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  "+transferLine))
 			}
 		}
-	}
 
-	// Remotes footer in Panel 1
-	var remotesFooter string
-	if len(v.Remotes) > 0 {
-		var rTokens []string
-		for _, r := range v.Remotes {
-			quota := ""
-			if r.About != nil && r.About.Total > 0 {
-				quota = fmt.Sprintf(" (%s)", rclone.FormatBytes(r.About.Used))
+		// Remotes footer if space permits
+		if len(v.Remotes) > 0 && len(lines) < innerHeight-1 {
+			var rTokens []string
+			for _, r := range v.Remotes {
+				quota := ""
+				if r.About != nil && r.About.Total > 0 {
+					quota = fmt.Sprintf(" (%s)", rclone.FormatBytes(r.About.Used))
+				}
+				rTokens = append(rTokens, fmt.Sprintf("%s%s", r.Info.Name, quota))
 			}
-			rTokens = append(rTokens, fmt.Sprintf("%s%s", r.Info.Name, quota))
+			remotesLine := "Remotes: " + strings.Join(rTokens, " • ")
+			if len(remotesLine) > innerWidth-2 && innerWidth > 6 {
+				remotesLine = remotesLine[:innerWidth-5] + "..."
+			}
+
+			// Pad lines up to footer
+			for len(lines) < innerHeight-2 {
+				lines = append(lines, "")
+			}
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorBorder).Render(strings.Repeat("─", innerWidth)))
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(" "+remotesLine))
 		}
-		remotesLine := strings.Join(rTokens, " • ")
-		if len(remotesLine) > v.Width-6 && v.Width > 10 {
-			remotesLine = remotesLine[:v.Width-9] + "..."
-		}
-		remotesFooter = lipgloss.JoinVertical(lipgloss.Left,
-			lipgloss.NewStyle().Foreground(styles.ColorBorder).Render(strings.Repeat("─", v.Width-4)),
-			lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render("Remotes: "+remotesLine),
-		)
 	}
 
-	fullBody := strings.Join(lines, "\n")
-	if remotesFooter != "" {
-		fullBody = lipgloss.JoinVertical(lipgloss.Left, fullBody, "\n", remotesFooter)
-	}
-
-	return panelStyle.
-		Width(v.Width).
-		Height(v.Height).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, "\n", fullBody))
+	return components.RenderPanelBox(v.Width, v.Height, "[1] Profiles", nil, v.IsActive, lines)
 }

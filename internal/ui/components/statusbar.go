@@ -13,30 +13,57 @@ type Shortcut struct {
 	Desc string
 }
 
-func RenderStatusBar(width int, shortcuts []Shortcut, message string, isError bool) string {
-	var parts []string
-	for _, sc := range shortcuts {
-		key := styles.ShortcutKeyStyle.Render(fmt.Sprintf("[%s]", sc.Key))
-		desc := styles.ShortcutDescStyle.Render(sc.Desc)
-		parts = append(parts, fmt.Sprintf("%s %s", key, desc))
+func RenderStatusBar(width int, shortcuts []Shortcut, message string, isError bool, rcloneVer string, isMock bool) string {
+	statusColor := styles.ColorSuccess
+	statusText := "● " + rcloneVer
+	if isMock {
+		statusColor = styles.ColorWarning
+		statusText = "● Demo Mode"
 	}
-	left := strings.Join(parts, "  ")
+	rcloneBadge := lipgloss.NewStyle().Foreground(statusColor).Render(statusText)
+	appBadge := lipgloss.NewStyle().Foreground(styles.MochaOverlay0).Render("lazyrclone v0.1.0")
+	right := lipgloss.JoinHorizontal(lipgloss.Center, rcloneBadge, "  ", appBadge)
+	rightWidth := lipgloss.Width(right)
 
-	var right string
+	availForLeft := width - rightWidth - 2
+	if availForLeft < 0 {
+		availForLeft = 0
+	}
+
+	var leftParts []string
+	currentWidth := 0
+
 	if message != "" {
 		msgStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.ColorSuccess)
 		if isError {
 			msgStyle = lipgloss.NewStyle().Bold(true).Foreground(styles.ColorDanger)
 		}
-		right = msgStyle.Render(message)
+		msgRendered := msgStyle.Render(message) + "  |  "
+		leftParts = append(leftParts, msgRendered)
+		currentWidth += lipgloss.Width(msgRendered)
 	}
 
-	spaceLen := width - lipgloss.Width(left) - lipgloss.Width(right) - 4
+	for _, sc := range shortcuts {
+		key := styles.ShortcutKeyStyle.Render(fmt.Sprintf("[%s]", sc.Key))
+		desc := styles.ShortcutDescStyle.Render(sc.Desc)
+		item := fmt.Sprintf("%s %s", key, desc)
+		itemWidth := lipgloss.Width(item) + 2
+
+		if currentWidth+itemWidth > availForLeft {
+			break
+		}
+		leftParts = append(leftParts, item)
+		currentWidth += itemWidth
+	}
+
+	left := strings.Join(leftParts, "  ")
+
+	spaceLen := width - lipgloss.Width(left) - rightWidth
 	if spaceLen < 1 {
 		spaceLen = 1
 	}
-	spacer := lipgloss.NewStyle().Width(spaceLen).Render("")
+	spacer := strings.Repeat(" ", spaceLen)
 
-	content := lipgloss.JoinHorizontal(lipgloss.Center, left, spacer, right)
-	return styles.StatusBarStyle.Width(width).Render(content)
+	content := left + spacer + right
+	return styles.StatusBarStyle.Width(width).MaxWidth(width).Inline(true).Render(content)
 }

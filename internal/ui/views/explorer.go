@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/celson/lazyrclone/internal/rclone"
+	"github.com/celson/lazyrclone/internal/ui/components"
 	"github.com/celson/lazyrclone/internal/ui/styles"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -109,7 +110,7 @@ func (v *ExplorerView) MoveDown() {
 	p := v.CurrentActivePane()
 	if p.SelectedIdx < len(p.Items)-1 {
 		p.SelectedIdx++
-		visibleLines := v.Height - 6
+		visibleLines := v.Height - 4
 		if visibleLines < 1 {
 			visibleLines = 1
 		}
@@ -194,22 +195,14 @@ func (v *ExplorerView) renderPane(idx int, paneWidth, paneHeight int) string {
 	p := v.Panes[idx]
 	isActive := (idx == v.ActivePane)
 
-	panelStyle := styles.PanelStyle
-	titleStyle := styles.PanelTitleStyle
-	if isActive {
-		panelStyle = styles.ActivePanelStyle
-		titleStyle = styles.ActivePanelTitleStyle
-	}
-
 	paneLabel := "Source"
 	if idx == 1 {
-		paneLabel = "Destination"
+		paneLabel = "Dest"
 	}
+	headerText := fmt.Sprintf("[%s: %s%s]", paneLabel, p.Remote, p.CurrentDir)
 
-	headerText := fmt.Sprintf(" %s [%s%s] ", paneLabel, p.Remote, p.CurrentDir)
-	title := titleStyle.Render(headerText)
-
-	visibleLines := paneHeight - 4
+	innerWidth := paneWidth - 2
+	visibleLines := paneHeight - 2
 	if visibleLines < 1 {
 		visibleLines = 1
 	}
@@ -217,11 +210,11 @@ func (v *ExplorerView) renderPane(idx int, paneWidth, paneHeight int) string {
 	var lines []string
 
 	if p.Loading {
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render("  Loading contents..."))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render(" Loading contents..."))
 	} else if p.ErrorMsg != "" {
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorDanger).Render("  Error: "+p.ErrorMsg))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(" Error: "+p.ErrorMsg))
 	} else if len(p.Items) == 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  (Directory is empty)"))
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" (Directory empty)"))
 	} else {
 		endIdx := p.ScrollOffset + visibleLines
 		if endIdx > len(p.Items) {
@@ -249,19 +242,19 @@ func (v *ExplorerView) renderPane(idx int, paneWidth, paneHeight int) string {
 				sizeStr = "<DIR>"
 			}
 
-			maxNameLen := paneWidth - 28
-			if maxNameLen < 10 {
-				maxNameLen = 10
+			maxNameLen := innerWidth - 18
+			if maxNameLen < 6 {
+				maxNameLen = 6
 			}
 			displayName := item.Name
 			if len(displayName) > maxNameLen {
 				displayName = displayName[:maxNameLen-3] + "..."
 			}
 
-			itemRow := fmt.Sprintf("%s %s %-*s %10s", check, icon, maxNameLen, displayName, sizeStr)
+			itemRow := fmt.Sprintf("%s %s %-*s %8s", check, icon, maxNameLen, displayName, sizeStr)
 
 			if i == p.SelectedIdx && isActive {
-				itemRow = styles.SelectedItemStyle.Width(paneWidth - 4).Render(itemRow)
+				itemRow = styles.SelectedItemStyle.Width(innerWidth).Render(itemRow)
 			} else {
 				if p.Marked[item.Name] {
 					itemRow = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Bold(true).Render(itemRow)
@@ -273,25 +266,18 @@ func (v *ExplorerView) renderPane(idx int, paneWidth, paneHeight int) string {
 		}
 	}
 
-	content := strings.Join(lines, "\n")
-	return panelStyle.
-		Width(paneWidth).
-		Height(paneHeight).
-		Render(lipgloss.JoinVertical(lipgloss.Left, title, "\n", content))
+	return components.RenderPanelBox(paneWidth, paneHeight, headerText, nil, isActive, lines)
 }
 
 func (v *ExplorerView) Render() string {
-	paneWidth := (v.Width / 2) - 2
-	if paneWidth < 20 {
-		paneWidth = 20
+	paneWidth := v.Width / 2
+	if paneWidth < 15 {
+		paneWidth = 15
 	}
-	paneHeight := v.Height - 3
-	if paneHeight < 5 {
-		paneHeight = 5
-	}
+	rightPaneWidth := v.Width - paneWidth
 
-	left := v.renderPane(0, paneWidth, paneHeight)
-	right := v.renderPane(1, paneWidth, paneHeight)
+	left := v.renderPane(0, paneWidth, v.Height)
+	right := v.renderPane(1, rightPaneWidth, v.Height)
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 }

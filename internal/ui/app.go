@@ -10,10 +10,8 @@ import (
 	"github.com/celson/lazyrclone/internal/config"
 	"github.com/celson/lazyrclone/internal/rclone"
 	"github.com/celson/lazyrclone/internal/ui/components"
-	"github.com/celson/lazyrclone/internal/ui/styles"
 	"github.com/celson/lazyrclone/internal/ui/views"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type MainSubTab int
@@ -109,7 +107,6 @@ func (m *AppModel) syncExplorerWithSelectedProfile() {
 		return
 	}
 
-	// Parse source
 	srcRemote, srcDir := splitRemoteAndPath(p.Source)
 	dstRemote, dstDir := splitRemoteAndPath(p.Destination)
 
@@ -144,7 +141,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
 		m.Height = msg.Height
-		m.recalculateLayout()
 		return m, nil
 
 	case DryRunFinishedMsg:
@@ -153,7 +149,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.StatusMsg = fmt.Sprintf("Dry-run error: %v", msg.Result.Err)
 			m.IsStatusErr = true
 		} else {
-			m.StatusMsg = fmt.Sprintf("Diff preview ready: +%d to add, ~%d to update, -%d to delete",
+			m.StatusMsg = fmt.Sprintf("Diff ready: +%d to add, ~%d to update, -%d to delete",
 				msg.Result.ToAdd, msg.Result.ToUpdate, msg.Result.ToDelete)
 			m.IsStatusErr = false
 		}
@@ -220,7 +216,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "shift+tab":
-			// Reverse cycle
 			if m.FocusedPanel == 0 {
 				m.FocusedPanel = 2
 			} else {
@@ -230,7 +225,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "[":
-			// Cycle main sub-tab left
 			if m.MainSubTab == 0 {
 				m.MainSubTab = SubTabLogs
 			} else {
@@ -239,7 +233,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "]":
-			// Cycle main sub-tab right
 			m.MainSubTab = (m.MainSubTab + 1) % 3
 			return m, nil
 
@@ -265,51 +258,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *AppModel) updatePanelsActive() {
 	m.ProfilesView.IsActive = (m.FocusedPanel == components.PanelProfiles)
 	m.TransfersView.IsActive = (m.FocusedPanel == components.PanelRuns)
-}
-
-func (m *AppModel) recalculateLayout() {
-	availHeight := m.Height - 3
-	if availHeight < 10 {
-		availHeight = 10
-	}
-
-	leftWidth := (m.Width * 38) / 100
-	if leftWidth < 36 {
-		leftWidth = 36
-	}
-	if leftWidth > 55 {
-		leftWidth = 55
-	}
-	rightWidth := m.Width - leftWidth - 2
-	if rightWidth < 30 {
-		rightWidth = 30
-	}
-
-	leftTopHeight := (availHeight * 58) / 100
-	if leftTopHeight < 8 {
-		leftTopHeight = 8
-	}
-	leftBottomHeight := availHeight - leftTopHeight
-	if leftBottomHeight < 5 {
-		leftBottomHeight = 5
-	}
-
-	m.ProfilesView.SetSize(leftWidth, leftTopHeight)
-	m.TransfersView.SetSize(leftWidth, leftBottomHeight)
-
-	// Main Panel inner size
-	mainInnerWidth := rightWidth - 4
-	mainInnerHeight := availHeight - 5
-	if mainInnerWidth < 10 {
-		mainInnerWidth = 10
-	}
-	if mainInnerHeight < 5 {
-		mainInnerHeight = 5
-	}
-
-	m.DiffView.Width = mainInnerWidth
-	m.DiffView.Height = mainInnerHeight
-	m.ExplorerView.SetSize(mainInnerWidth, mainInnerHeight)
 }
 
 func (m *AppModel) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -401,7 +349,6 @@ func (m *AppModel) handleProfilesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.FocusedPanel = components.PanelMain
 		m.updatePanelsActive()
 	case "d", "p":
-		// Honest Dry Run: run and bring Diff tab into view!
 		p := m.ProfilesView.SelectedProfile()
 		if p == nil {
 			return m, nil
@@ -411,7 +358,6 @@ func (m *AppModel) handleProfilesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.runDryRunCmd(p)
 
 	case "enter", "r":
-		// Execute Profile
 		p := m.ProfilesView.SelectedProfile()
 		if p == nil {
 			return m, nil
@@ -736,56 +682,36 @@ func (m *AppModel) startTransferCmd(job *rclone.TransferJob) tea.Cmd {
 }
 
 func (m *AppModel) renderMainPanel(width, height int) string {
-	panelStyle := styles.PanelStyle
-	if m.FocusedPanel == components.PanelMain {
-		panelStyle = styles.ActivePanelStyle
+	subTabs := []components.SubTabItem{
+		{Name: "Diff Preview", IsActive: m.MainSubTab == SubTabDiff},
+		{Name: "Dual Explorer", IsActive: m.MainSubTab == SubTabExplorer},
+		{Name: "Live Logs", IsActive: m.MainSubTab == SubTabLogs},
 	}
 
-	// Sub-tabs row at the top of the main panel
-	var tabs []string
-	for i, name := range MainSubTabNames {
-		keyHint := ""
-		switch i {
-		case 0:
-			keyHint = " (Diff)"
-		case 1:
-			keyHint = " (Files)"
-		case 2:
-			keyHint = " (Logs)"
-		}
-		label := name + keyHint
+	isActive := (m.FocusedPanel == components.PanelMain)
 
-		if MainSubTab(i) == m.MainSubTab {
-			tabs = append(tabs, styles.TabActiveStyle.Render(label))
-		} else {
-			tabs = append(tabs, styles.TabInactiveStyle.Render(label))
-		}
-	}
-	tabsRow := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-
-	headerBadge := styles.PanelTitleStyle.Render(" [3] Main View: ")
-	if m.FocusedPanel == components.PanelMain {
-		headerBadge = styles.ActivePanelTitleStyle.Render(" [3] Main View: ")
-	}
-
-	topNav := lipgloss.JoinHorizontal(lipgloss.Center, headerBadge, "  ", tabsRow, "  ", lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("[ [ / ] Switch Sub-tab ]"))
-
-	separator := lipgloss.NewStyle().Foreground(styles.ColorBorder).Render(strings.Repeat("─", width-4))
-
-	var body string
 	switch m.MainSubTab {
 	case SubTabDiff:
-		body = m.DiffView.Render()
+		m.DiffView.Width = width - 4
+		m.DiffView.Height = height - 2
+		lines := m.DiffView.RenderLines()
+		return components.RenderPanelBox(width, height, "[3] Main View", subTabs, isActive, lines)
 
 	case SubTabExplorer:
-		body = m.ExplorerView.Render()
+		m.ExplorerView.SetSize(width-2, height-2)
+		explorerContent := m.ExplorerView.Render()
+		lines := strings.Split(explorerContent, "\n")
+		return components.RenderPanelBox(width, height, "[3] Main View", subTabs, isActive, lines)
 
 	case SubTabLogs:
 		job := m.TransfersView.ActiveJob()
+		var lines []string
 		if job == nil || len(job.Logs) == 0 {
-			body = lipgloss.NewStyle().Foreground(styles.ColorMuted).Padding(2, 2).Render("No active logs. Start a transfer with [r] to stream rclone output.")
+			lines = append(lines, "")
+			lines = append(lines, "  No active logs.")
+			lines = append(lines, "  Start a transfer with [r] in [1] Profiles to stream live output.")
 		} else {
-			visibleLogs := height - 6
+			visibleLogs := height - 4
 			if visibleLogs < 1 {
 				visibleLogs = 1
 			}
@@ -797,17 +723,14 @@ func (m *AppModel) renderMainPanel(width, height int) string {
 			if end > len(job.Logs) {
 				end = len(job.Logs)
 			}
-			slice := job.Logs[start:end]
-			body = strings.Join(slice, "\n")
+			for _, l := range job.Logs[start:end] {
+				lines = append(lines, "  "+l)
+			}
 		}
+		return components.RenderPanelBox(width, height, "[3] Main View", subTabs, isActive, lines)
 	}
 
-	content := lipgloss.JoinVertical(lipgloss.Left, topNav, separator, body)
-
-	return panelStyle.
-		Width(width).
-		Height(height).
-		Render(content)
+	return ""
 }
 
 func (m *AppModel) View() string {
@@ -815,32 +738,64 @@ func (m *AppModel) View() string {
 		return "Initializing lazyrclone..."
 	}
 
-	header := components.RenderHeader(m.Width, m.FocusedPanel, m.RcloneVer, m.IsMock)
+	// EXACT VERTICAL BUDGET:
+	// Total screen height = m.Height
+	// Status bar = 1 row at the very bottom
+	// Panels occupy all remaining rows: m.Height - 1
+	// Starts at row 0 (exact top edge, identical to Lazygit & Lazydocker)
+	availHeight := m.Height - 1
+	if availHeight < 6 {
+		availHeight = 6
+	}
 
-	// Column sizes
-	availHeight := m.Height - 3
 	leftWidth := (m.Width * 38) / 100
-	if leftWidth < 36 {
-		leftWidth = 36
+	if leftWidth < 34 {
+		leftWidth = 34
 	}
-	if leftWidth > 55 {
-		leftWidth = 55
+	if leftWidth > 52 {
+		leftWidth = 52
 	}
-	rightWidth := m.Width - leftWidth - 2
-	if rightWidth < 30 {
-		rightWidth = 30
+	rightWidth := m.Width - leftWidth
+
+	leftTopHeight := (availHeight * 55) / 100
+	if leftTopHeight < 6 {
+		leftTopHeight = 6
 	}
+	leftBottomHeight := availHeight - leftTopHeight
+
+	m.ProfilesView.SetSize(leftWidth, leftTopHeight)
+	m.TransfersView.SetSize(leftWidth, leftBottomHeight)
 
 	leftTop := m.ProfilesView.Render()
 	leftBottom := m.TransfersView.Render()
-	leftCol := lipgloss.JoinVertical(lipgloss.Left, leftTop, leftBottom)
+	leftCol := leftTop + "\n" + leftBottom
 
 	rightCol := m.renderMainPanel(rightWidth, availHeight)
 
-	mainBody := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, " ", rightCol)
+	// Combine left and right columns row by row
+	leftRows := strings.Split(leftCol, "\n")
+	rightRows := strings.Split(rightCol, "\n")
+
+	maxRows := len(leftRows)
+	if len(rightRows) > maxRows {
+		maxRows = len(rightRows)
+	}
+
+	var combinedRows []string
+	for i := 0; i < maxRows; i++ {
+		lRow := ""
+		if i < len(leftRows) {
+			lRow = leftRows[i]
+		}
+		rRow := ""
+		if i < len(rightRows) {
+			rRow = rightRows[i]
+		}
+		combinedRows = append(combinedRows, lRow+rRow)
+	}
+	mainBody := strings.Join(combinedRows, "\n")
 
 	var shortcuts []components.Shortcut
-
 	switch m.FocusedPanel {
 	case components.PanelProfiles:
 		shortcuts = []components.Shortcut{
@@ -851,32 +806,30 @@ func (m *AppModel) View() string {
 			{Key: "e", Desc: "Edit"},
 			{Key: "x", Desc: "Delete"},
 			{Key: "[/]", Desc: "Sub-tab"},
-			{Key: "Tab", Desc: "Next Panel"},
+			{Key: "Tab", Desc: "Next"},
 			{Key: "?", Desc: "Help"},
 			{Key: "q", Desc: "Quit"},
 		}
-
 	case components.PanelRuns:
 		shortcuts = []components.Shortcut{
 			{Key: "1-3", Desc: "Focus"},
-			{Key: "j/k", Desc: "Select Run"},
-			{Key: "x", Desc: "Cancel Run"},
+			{Key: "j/k", Desc: "Select"},
+			{Key: "x", Desc: "Cancel"},
 			{Key: "c", Desc: "Clear Done"},
 			{Key: "[/]", Desc: "Sub-tab"},
-			{Key: "Tab", Desc: "Next Panel"},
+			{Key: "Tab", Desc: "Next"},
 			{Key: "?", Desc: "Help"},
 			{Key: "q", Desc: "Quit"},
 		}
-
 	case components.PanelMain:
 		switch m.MainSubTab {
 		case SubTabDiff:
 			shortcuts = []components.Shortcut{
 				{Key: "1-3", Desc: "Focus"},
-				{Key: "j/k", Desc: "Scroll Diff"},
-				{Key: "d", Desc: "Re-run Dry-Run"},
+				{Key: "j/k", Desc: "Scroll"},
+				{Key: "d", Desc: "Re-run"},
 				{Key: "[/]", Desc: "Sub-tab"},
-				{Key: "Tab", Desc: "Next Panel"},
+				{Key: "Tab", Desc: "Next"},
 				{Key: "?", Desc: "Help"},
 				{Key: "q", Desc: "Quit"},
 			}
@@ -888,31 +841,30 @@ func (m *AppModel) View() string {
 				{Key: "Space", Desc: "Select"},
 				{Key: "c", Desc: "Copy"},
 				{Key: "s", Desc: "Sync"},
-				{Key: "r", Desc: "Remote"},
 				{Key: "[/]", Desc: "Sub-tab"},
-				{Key: "Tab", Desc: "Next Panel"},
+				{Key: "Tab", Desc: "Next"},
 				{Key: "?", Desc: "Help"},
 			}
 		case SubTabLogs:
 			shortcuts = []components.Shortcut{
 				{Key: "1-3", Desc: "Focus"},
-				{Key: "j/k", Desc: "Scroll Logs"},
+				{Key: "j/k", Desc: "Scroll"},
 				{Key: "[/]", Desc: "Sub-tab"},
-				{Key: "Tab", Desc: "Next Panel"},
+				{Key: "Tab", Desc: "Next"},
 				{Key: "?", Desc: "Help"},
 				{Key: "q", Desc: "Quit"},
 			}
 		}
 	}
 
-	statusBar := components.RenderStatusBar(m.Width, shortcuts, m.StatusMsg, m.IsStatusErr)
+	statusBar := components.RenderStatusBar(m.Width, shortcuts, m.StatusMsg, m.IsStatusErr, m.RcloneVer, m.IsMock)
 
-	mainView := lipgloss.JoinVertical(lipgloss.Left, header, "\n", mainBody, statusBar)
+	fullScreen := mainBody + "\n" + statusBar
 
 	if m.Modal.Type != components.ModalNone {
 		modalOverlay := m.Modal.Render(m.Width, m.Height)
 		return modalOverlay
 	}
 
-	return mainView
+	return fullScreen
 }
