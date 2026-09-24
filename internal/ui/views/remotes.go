@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -267,20 +268,32 @@ func (v *RemotesView) RenderLines(width, height int) []string {
 			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("  Quota: Not reported or unlimited."))
 		}
 
-		// Config parameters
+		// Safe config parameters (strictly exclude passwords, tokens, keys, secrets)
 		if len(sel.Info.Details) > 0 {
 			var configPairs []string
-			for k, val := range sel.Info.Details {
+			var safeKeys []string
+			for k := range sel.Info.Details {
+				if !rclone.IsSensitiveConfigKey(k) && k != "type" {
+					safeKeys = append(safeKeys, k)
+				}
+			}
+			sort.Strings(safeKeys)
+
+			for _, k := range safeKeys {
+				val := sel.Info.Details[k]
 				if len(val) > 28 {
 					val = val[:25] + "..."
 				}
-				configPairs = append(configPairs, fmt.Sprintf("%s: %s", k, val))
+				configPairs = append(configPairs, fmt.Sprintf("%s = %s", k, val))
 			}
-			cfgLine := "  Config: " + strings.Join(configPairs, " • ")
-			if len(cfgLine) > innerWidth-4 && innerWidth > 8 {
-				cfgLine = cfgLine[:innerWidth-7] + "..."
+
+			if len(configPairs) > 0 {
+				cfgLine := "  Config: " + strings.Join(configPairs, " • ")
+				if len(cfgLine) > innerWidth-4 && innerWidth > 8 {
+					cfgLine = cfgLine[:innerWidth-7] + "..."
+				}
+				lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSubtext).Render(cfgLine))
 			}
-			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSubtext).Render(cfgLine))
 		}
 
 		lines = append(lines, "")

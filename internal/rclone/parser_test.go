@@ -182,3 +182,25 @@ func TestNormalizeRclonePath(t *testing.T) {
 		t.Errorf("expected /var/log, got: %s", norm3)
 	}
 }
+
+func TestIsSensitiveConfigKey(t *testing.T) {
+	sensitive := []string{
+		"password", "password2", "pass", "token", "refresh_token",
+		"access_token", "secret", "client_secret", "secret_access_key",
+		"account_key", "api_key", "private_key", "auth_token", "oauth_token",
+	}
+	for _, key := range sensitive {
+		if !IsSensitiveConfigKey(key) {
+			t.Errorf("expected %q to be sensitive, got false", key)
+		}
+	}
+
+	safe := []string{
+		"remote", "endpoint", "region", "scope", "bucket", "chunk_size", "user",
+	}
+	for _, key := range safe {
+		if IsSensitiveConfigKey(key) {
+			t.Errorf("expected %q to be safe, got true", key)
+		}
+	}
+}

@@ -92,7 +92,11 @@ func (c *RealClient) ListRemotes(ctx context.Context) ([]RemoteInfo, error) {
 				}
 				detailMap := make(map[string]string)
 				for k, v := range details {
-					detailMap[k] = fmt.Sprintf("%v", v)
+					if IsSensitiveConfigKey(k) {
+						detailMap[k] = "[REDACTED]"
+					} else {
+						detailMap[k] = fmt.Sprintf("%v", v)
+					}
 				}
 				remotes = append(remotes, RemoteInfo{
 					Name:    name + ":",

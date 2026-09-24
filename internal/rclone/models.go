@@ -3,8 +3,26 @@ package rclone
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
+
+// IsSensitiveConfigKey checks if a configuration key represents sensitive credentials
+// such as passwords, tokens, API keys, client secrets, etc.
+func IsSensitiveConfigKey(key string) bool {
+	k := strings.ToLower(strings.TrimSpace(key))
+	sensitiveSubstrings := []string{
+		"pass", "password", "secret", "token", "key", "auth",
+		"cred", "cert", "hash", "salt", "session", "signature",
+		"bearer", "oauth",
+	}
+	for _, sub := range sensitiveSubstrings {
+		if strings.Contains(k, sub) {
+			return true
+		}
+	}
+	return false
+}
 
 type RemoteInfo struct {
 	Name    string            `json:"name"`
