@@ -67,6 +67,16 @@ func TestParseLogLineJSONStats(t *testing.T) {
 	if msg != "Transferred stats" {
 		t.Errorf("expected msg 'Transferred stats', got '%s'", msg)
 	}
+
+	// Test real rclone stats where 'percentage' field is omitted
+	lineNoPct := `{"level":"info","msg":"Transferred stats","time":"2026-09-24T05:00:00Z","stats":{"bytes":1000,"totalBytes":2000,"speed":500.0,"eta":2,"transfers":1,"totalTransfers":1}}`
+	_, statsNoPct, _ := ParseLogLine(lineNoPct)
+	if statsNoPct == nil {
+		t.Fatal("expected statsNoPct, got nil")
+	}
+	if statsNoPct.Percentage != 50 {
+		t.Errorf("expected computed percentage 50, got %d", statsNoPct.Percentage)
+	}
 }
 
 func TestParseLogLineDryRun(t *testing.T) {

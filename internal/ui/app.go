@@ -44,6 +44,14 @@ func clearStatusCmd() tea.Cmd {
 	})
 }
 
+type TickMsg time.Time
+
+func tickCmd(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(t time.Time) tea.Msg {
+		return TickMsg(t)
+	})
+}
+
 type AppModel struct {
 	Config        *config.Config
 	Client        rclone.RcloneClient
@@ -92,11 +100,23 @@ func NewAppModel(cfg *config.Config, client rclone.RcloneClient) *AppModel {
 	return app
 }
 
+func (m *AppModel) hasRunningJobs() bool {
+	if m.TransfersView == nil {
+		return false
+	}
+	for _, j := range m.TransfersView.Jobs {
+		if j.Status == rclone.JobStatusRunning {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *AppModel) Init() tea.Cmd {
 	m.RemotesView.Refresh()
 	m.ProfilesView.SetRemotes(m.RemotesView.Remotes)
 	m.syncExplorerWithSelectedProfile()
-	return nil
+	return tickCmd(500 * time.Millisecond)
 }
 
 func (m *AppModel) syncExplorerWithSelectedProfile() {
@@ -155,6 +175,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, clearStatusCmd()
 
+	case TickMsg:
+		d := 1000 * time.Millisecond
+		if m.hasRunningJobs() {
+			d = 200 * time.Millisecond
+		}
+		return m, tickCmd(d)
+
 	case TransferUpdateMsg:
 		for _, j := range m.TransfersView.Jobs {
 			if j.ID == msg.JobID {
@@ -172,6 +199,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						j.ErrorMsg = msg.Err.Error()
 					} else {
 						j.Status = rclone.JobStatusCompleted
+						if j.LatestStats != nil {
+							j.LatestStats.Percentage = 100
+						}
 					}
 				}
 				break
@@ -552,6 +582,24 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						Logs:        make([]string, 0),
 					}
 					m.TransfersView.AddJob(job)
+					go func() {
+						err := m.Client.StartTransfer(context.Background(), job, func(stats *rclone.StatsMsg) {
+							job.LatestStats = stats
+						}, func(log string) {
+							job.Logs = append(job.Logs, log)
+						})
+						endTime := time.Now()
+						job.EndTime = &endTime
+						if err != nil {
+							job.Status = rclone.JobStatusFailed
+							job.ErrorMsg = err.Error()
+						} else {
+							job.Status = rclone.JobStatusCompleted
+							if job.LatestStats != nil {
+								job.LatestStats.Percentage = 100
+							}
+						}
+					}()
 				},
 			)
 
@@ -654,9 +702,16 @@ func (m *AppModel) startProfileJob(p *config.Profile) {
 			job.Status = rclone.JobStatusFailed
 			job.ErrorMsg = err.Error()
 			p.LastStatus = "failed"
+			m.StatusMsg = fmt.Sprintf("Job '%s' failed: %v", p.Name, err)
+			m.IsStatusErr = true
 		} else {
 			job.Status = rclone.JobStatusCompleted
+			if job.LatestStats != nil {
+				job.LatestStats.Percentage = 100
+			}
 			p.LastStatus = "success"
+			m.StatusMsg = fmt.Sprintf("Job '%s' completed successfully.", p.Name)
+			m.IsStatusErr = false
 		}
 		_ = config.SaveConfig(m.Config)
 	}()

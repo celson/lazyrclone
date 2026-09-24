@@ -87,10 +87,19 @@ func (v *TransfersView) Render() string {
 			}
 
 			pct := 0
-			if j.LatestStats != nil {
-				pct = j.LatestStats.Percentage
-			} else if j.Status == rclone.JobStatusCompleted {
+			if j.Status == rclone.JobStatusCompleted {
 				pct = 100
+			} else if j.LatestStats != nil {
+				if j.LatestStats.Percentage > 0 {
+					pct = j.LatestStats.Percentage
+				} else if j.LatestStats.TotalBytes > 0 {
+					pct = int((float64(j.LatestStats.Bytes) / float64(j.LatestStats.TotalBytes)) * 100)
+				} else if j.LatestStats.TotalTransfers > 0 {
+					pct = int((float64(j.LatestStats.Transfers) / float64(j.LatestStats.TotalTransfers)) * 100)
+				}
+				if pct > 100 {
+					pct = 100
+				}
 			}
 
 			maxNameWidth := innerWidth - 14
@@ -119,16 +128,31 @@ func (v *TransfersView) Render() string {
 				progressBar := styles.RenderProgressBar(barWidth, pct)
 				contentLines = append(contentLines, fmt.Sprintf("   %s %3d%%", progressBar, pct))
 
-				if j.LatestStats != nil {
-					metricLine := fmt.Sprintf("   %s • %s • ETA %s",
+				if j.Status == rclone.JobStatusFailed {
+					errMsg := "Failed"
+					if j.ErrorMsg != "" {
+						errMsg = "Failed: " + j.ErrorMsg
+					}
+					if len(errMsg) > innerWidth-2 && innerWidth > 6 {
+						errMsg = errMsg[:innerWidth-5] + "..."
+					}
+					contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorDanger).Render("   "+errMsg))
+				} else if j.LatestStats != nil {
+					etaOrDone := "ETA " + rclone.FormatDuration(j.LatestStats.ETA)
+					if j.Status == rclone.JobStatusCompleted {
+						etaOrDone = "Done"
+					}
+					metricLine := fmt.Sprintf("   %s • %s • %s",
 						rclone.FormatBytes(j.LatestStats.Bytes),
 						rclone.FormatSpeed(j.LatestStats.Speed),
-						rclone.FormatDuration(j.LatestStats.ETA),
+						etaOrDone,
 					)
 					if len(metricLine) > innerWidth-2 && innerWidth > 6 {
 						metricLine = metricLine[:innerWidth-5] + "..."
 					}
 					contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorActive).Render(metricLine))
+				} else if j.Status == rclone.JobStatusCompleted {
+					contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorActive).Render("   Completed • Done"))
 				}
 			}
 		}

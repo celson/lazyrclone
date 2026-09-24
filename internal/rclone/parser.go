@@ -33,6 +33,19 @@ func ParseLogLine(line string) (*DryRunItem, *StatsMsg, string) {
 	// Check if this log has embedded stats
 	if raw.Stats != nil {
 		raw.Stats.RawLine = line
+		if raw.Stats.TotalBytes > 0 {
+			raw.Stats.Percentage = int((float64(raw.Stats.Bytes) / float64(raw.Stats.TotalBytes)) * 100)
+		} else if raw.Stats.TotalTransfers > 0 {
+			raw.Stats.Percentage = int((float64(raw.Stats.Transfers) / float64(raw.Stats.TotalTransfers)) * 100)
+		}
+		if raw.Stats.Percentage > 100 {
+			raw.Stats.Percentage = 100
+		}
+		for i := range raw.Stats.Transferring {
+			if raw.Stats.Transferring[i].Size > 0 {
+				raw.Stats.Transferring[i].Percentage = int((float64(raw.Stats.Transferring[i].Bytes) / float64(raw.Stats.Transferring[i].Size)) * 100)
+			}
+		}
 		return nil, raw.Stats, raw.Msg
 	}
 
