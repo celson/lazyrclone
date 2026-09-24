@@ -21,7 +21,7 @@ var TabNames = []string{"1: Profiles", "2: Explorer", "3: Transfers", "4: Remote
 func RenderHeader(width int, currentTab Tab, rcloneVer string, isMock bool) string {
 	logo := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(styles.ColorWhite).
+		Foreground(styles.MochaCrust).
 		Background(styles.ColorPrimary).
 		Padding(0, 1).
 		Render("⚡ lazyrclone")

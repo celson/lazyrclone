@@ -4,23 +4,56 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Catppuccin Mocha Official Palette
 var (
-	// Colors
-	ColorPrimary   = lipgloss.Color("#7D56F4")
-	ColorSecondary = lipgloss.Color("#00D7D7")
-	ColorActive    = lipgloss.Color("#88C0D0")
-	ColorSuccess   = lipgloss.Color("#50FA7B")
-	ColorWarning   = lipgloss.Color("#FFB86C")
-	ColorDanger    = lipgloss.Color("#FF5555")
-	ColorMuted     = lipgloss.Color("#6272A4")
-	ColorBgDark    = lipgloss.Color("#1E1E2E")
-	ColorSelection = lipgloss.Color("#3B4252")
-	ColorWhite     = lipgloss.Color("#F8F8F2")
+	// Accents
+	MochaRosewater = lipgloss.Color("#f5e0dc")
+	MochaFlamingo  = lipgloss.Color("#f2cdcd")
+	MochaPink      = lipgloss.Color("#f5c2e7")
+	MochaMauve     = lipgloss.Color("#cba6f7")
+	MochaRed       = lipgloss.Color("#f38ba8")
+	MochaMaroon    = lipgloss.Color("#eba0ac")
+	MochaPeach     = lipgloss.Color("#fab387")
+	MochaYellow    = lipgloss.Color("#f9e2af")
+	MochaGreen     = lipgloss.Color("#a6e3a1")
+	MochaTeal      = lipgloss.Color("#94e2d5")
+	MochaSky       = lipgloss.Color("#89dceb")
+	MochaSapphire  = lipgloss.Color("#74c7ec")
+	MochaBlue      = lipgloss.Color("#89b4fa")
+	MochaLavender  = lipgloss.Color("#b4befe")
+
+	// Surfaces & Bases
+	MochaText     = lipgloss.Color("#cdd6f4")
+	MochaSubtext1 = lipgloss.Color("#bac2de")
+	MochaSubtext0 = lipgloss.Color("#a6adc8")
+	MochaOverlay2 = lipgloss.Color("#9399b2")
+	MochaOverlay1 = lipgloss.Color("#7f849c")
+	MochaOverlay0 = lipgloss.Color("#6c7086")
+	MochaSurface2 = lipgloss.Color("#585b70")
+	MochaSurface1 = lipgloss.Color("#45475a")
+	MochaSurface0 = lipgloss.Color("#313244")
+	MochaBase     = lipgloss.Color("#1e1e2e")
+	MochaMantle   = lipgloss.Color("#181825")
+	MochaCrust    = lipgloss.Color("#11111b")
+
+	// Semantic UI Colors mapped to Catppuccin Mocha
+	ColorPrimary   = MochaMauve    // Primary accent / active tabs / main headers
+	ColorSecondary = MochaSapphire // Secondary accent / directory names / commands
+	ColorActive    = MochaLavender // Focus indicator / active highlights
+	ColorSuccess   = MochaGreen    // Additions (+), online status, success messages
+	ColorWarning   = MochaPeach    // Updates (~), warnings, running status
+	ColorDanger    = MochaRed      // Deletions (-), errors, destructive actions
+	ColorMuted     = MochaOverlay0 // Dim items, inactive borders
+	ColorBorder    = MochaSurface1 // Panel borders
+	ColorBgDark    = MochaBase     // Background for modals and panels
+	ColorSelection = MochaSurface0 // Selected row background
+	ColorWhite     = MochaText     // Main foreground text
+	ColorSubtext   = MochaSubtext0 // Secondary text
 
 	// Base Panel Styles
 	PanelStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(ColorMuted).
+			BorderForeground(ColorBorder).
 			Padding(0, 1)
 
 	ActivePanelStyle = lipgloss.NewStyle().
@@ -30,37 +63,37 @@ var (
 
 	PanelTitleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(ColorPrimary)
+			Foreground(MochaSubtext1)
 
 	ActivePanelTitleStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(ColorWhite).
+				Foreground(MochaCrust).
 				Background(ColorPrimary).
 				Padding(0, 1)
 
 	// Tab Styles
 	TabActiveStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(ColorWhite).
+			Foreground(MochaCrust).
 			Background(ColorPrimary).
 			Padding(0, 2)
 
 	TabInactiveStyle = lipgloss.NewStyle().
-				Foreground(ColorMuted).
-				Background(ColorSelection).
+				Foreground(MochaSubtext0).
+				Background(MochaSurface0).
 				Padding(0, 2)
 
 	// List item styles
 	SelectedItemStyle = lipgloss.NewStyle().
-				Background(ColorSelection).
-				Foreground(ColorWhite).
+				Background(MochaSurface0).
+				Foreground(MochaLavender).
 				Bold(true)
 
 	NormalItemStyle = lipgloss.NewStyle().
-			Foreground(ColorWhite)
+			Foreground(MochaText)
 
 	MutedItemStyle = lipgloss.NewStyle().
-			Foreground(ColorMuted)
+			Foreground(MochaOverlay0)
 
 	// Status & Action Badges
 	BadgeAdd = lipgloss.NewStyle().
@@ -84,42 +117,42 @@ var (
 
 	// Progress Styles
 	ProgressFilled = lipgloss.NewStyle().
-			Foreground(ColorPrimary).
+			Foreground(MochaMauve).
 			SetString("█")
 
 	ProgressEmpty = lipgloss.NewStyle().
-			Foreground(ColorSelection).
+			Foreground(MochaSurface0).
 			SetString("░")
 
 	// Status Bar Styles
 	StatusBarStyle = lipgloss.NewStyle().
-			Background(ColorSelection).
-			Foreground(ColorWhite).
+			Background(MochaMantle).
+			Foreground(MochaText).
 			Padding(0, 1)
 
 	ShortcutKeyStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(ColorSecondary)
+				Foreground(MochaMauve)
 
 	ShortcutDescStyle = lipgloss.NewStyle().
-				Foreground(ColorWhite)
+				Foreground(MochaSubtext1)
 
 	// Modal Styles
 	ModalStyle = lipgloss.NewStyle().
 			Border(lipgloss.DoubleBorder()).
-			BorderForeground(ColorPrimary).
-			Background(ColorBgDark).
+			BorderForeground(MochaMauve).
+			Background(MochaBase).
 			Padding(1, 2)
 
 	ModalDangerStyle = lipgloss.NewStyle().
 				Border(lipgloss.DoubleBorder()).
-				BorderForeground(ColorDanger).
-				Background(ColorBgDark).
+				BorderForeground(MochaRed).
+				Background(MochaBase).
 				Padding(1, 2)
 
 	ModalTitleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(ColorPrimary).
+			Foreground(MochaMauve).
 			MarginBottom(1)
 )
 

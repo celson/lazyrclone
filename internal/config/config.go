@@ -52,7 +52,7 @@ func DefaultConfig() *Config {
 		Settings: Settings{
 			ConfirmDestructive: true,
 			DefaultView:        "profiles",
-			Theme:              "default",
+			Theme:              "catppuccin-mocha",
 			RclonePath:         "rclone",
 		},
 		Profiles: []*Profile{
