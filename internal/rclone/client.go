@@ -270,7 +270,11 @@ func (c *RealClient) CreateDir(ctx context.Context, remotePath string) error {
 		return os.MkdirAll(norm, 0755)
 	}
 	cmd := exec.CommandContext(ctx, c.binaryPath, "mkdir", norm)
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create directory: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func (c *RealClient) Delete(ctx context.Context, remotePath string, isDir bool) error {
@@ -281,8 +285,24 @@ func (c *RealClient) Delete(ctx context.Context, remotePath string, isDir bool) 
 	if clean == "/" || clean == "." || clean == "" || norm == "" || norm == "/" {
 		return fmt.Errorf("refusing to delete root path %q", norm)
 	}
+
+	// Security guard: protect user home directory and key system directories
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		cleanHome := filepath.Clean(home)
+		if clean == cleanHome {
+			return fmt.Errorf("refusing to delete user home directory %q", norm)
+		}
+	}
+	protectedDirs := []string{"/home", "/root", "/etc", "/usr", "/var", "/bin", "/sbin", "/lib", "/boot", "/dev", "/sys", "/proc"}
+	for _, p := range protectedDirs {
+		if clean == p {
+			return fmt.Errorf("refusing to delete protected system path %q", norm)
+		}
+	}
+
 	// Security guard for remotes: prevent purging entire remote root (e.g. "gdrive:", "gdrive:/")
-	if strings.HasSuffix(norm, ":") || strings.HasSuffix(norm, ":/") || strings.HasSuffix(norm, ":.") {
+	trimmed := strings.TrimSpace(norm)
+	if strings.HasSuffix(trimmed, ":") || strings.HasSuffix(trimmed, ":/") || strings.HasSuffix(trimmed, ":.") || strings.HasSuffix(trimmed, ":./") {
 		return fmt.Errorf("refusing to delete root of remote %q", norm)
 	}
 
@@ -299,7 +319,11 @@ func (c *RealClient) Delete(ctx context.Context, remotePath string, isDir bool) 
 	} else {
 		cmd = exec.CommandContext(ctx, c.binaryPath, "deletefile", norm)
 	}
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to delete %q: %w (%s)", norm, err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest string, flags []string) (*DryRunResult, error) {

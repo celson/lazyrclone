@@ -52,21 +52,46 @@ func NewExplorerView(client rclone.RcloneClient) *ExplorerView {
 	return ev
 }
 
+// BuildRemotePath constructs a safe, normalized rclone path from a remote, directory, and optional file name.
+func BuildRemotePath(remote, dir, name string) string {
+	remote = strings.TrimSpace(remote)
+	dir = strings.Trim(strings.TrimSpace(dir), "/")
+	name = strings.Trim(strings.TrimSpace(name), "/")
+
+	var parts []string
+	if dir != "" && dir != "." {
+		parts = append(parts, dir)
+	}
+	if name != "" {
+		parts = append(parts, name)
+	}
+	sub := strings.Join(parts, "/")
+
+	if remote == "" || remote == "local:" {
+		if sub == "" {
+			return "."
+		}
+		return sub
+	}
+
+	if strings.HasSuffix(remote, ":") {
+		return remote + sub
+	}
+	if sub == "" {
+		return remote
+	}
+	return path.Join(remote, sub)
+}
+
 func (v *ExplorerView) LoadPane(paneIdx int) {
 	p := v.Panes[paneIdx]
 	p.Loading = true
 	p.ErrorMsg = ""
 
-	remotePath := p.Remote
-	if p.CurrentDir != "" && p.CurrentDir != "." {
-		if !strings.HasSuffix(remotePath, "/") && !strings.HasSuffix(remotePath, ":") {
-			remotePath += "/"
-		}
-		remotePath += strings.TrimPrefix(p.CurrentDir, "/")
-	}
+	remotePath := BuildRemotePath(p.Remote, p.CurrentDir, "")
 
 	go func(targetPane *ExplorerPane, path string) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 
 		items, err := v.Client.ListDir(ctx, path)

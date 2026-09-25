@@ -76,8 +76,11 @@ func (v *TransfersView) Render() string {
 		contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(" Select profile and press [r]."))
 	} else {
 		for i, j := range v.Jobs {
+			st, jobErr := j.GetStatus()
+			latestStats := j.GetStats()
+
 			statusBadge := lipgloss.NewStyle().Foreground(styles.ColorWarning).Render("● RUN")
-			switch j.Status {
+			switch st {
 			case rclone.JobStatusCompleted:
 				statusBadge = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ OK")
 			case rclone.JobStatusFailed:
@@ -87,15 +90,15 @@ func (v *TransfersView) Render() string {
 			}
 
 			pct := 0
-			if j.Status == rclone.JobStatusCompleted {
+			if st == rclone.JobStatusCompleted {
 				pct = 100
-			} else if j.LatestStats != nil {
-				if j.LatestStats.Percentage > 0 {
-					pct = j.LatestStats.Percentage
-				} else if j.LatestStats.TotalBytes > 0 {
-					pct = int((float64(j.LatestStats.Bytes) / float64(j.LatestStats.TotalBytes)) * 100)
-				} else if j.LatestStats.TotalTransfers > 0 {
-					pct = int((float64(j.LatestStats.Transfers) / float64(j.LatestStats.TotalTransfers)) * 100)
+			} else if latestStats != nil {
+				if latestStats.Percentage > 0 {
+					pct = latestStats.Percentage
+				} else if latestStats.TotalBytes > 0 {
+					pct = int((float64(latestStats.Bytes) / float64(latestStats.TotalBytes)) * 100)
+				} else if latestStats.TotalTransfers > 0 {
+					pct = int((float64(latestStats.Transfers) / float64(latestStats.TotalTransfers)) * 100)
 				}
 				if pct > 100 {
 					pct = 100
@@ -128,30 +131,30 @@ func (v *TransfersView) Render() string {
 				progressBar := styles.RenderProgressBar(barWidth, pct)
 				contentLines = append(contentLines, fmt.Sprintf("   %s %3d%%", progressBar, pct))
 
-				if j.Status == rclone.JobStatusFailed {
+				if st == rclone.JobStatusFailed {
 					errMsg := "Failed"
-					if j.ErrorMsg != "" {
-						errMsg = "Failed: " + j.ErrorMsg
+					if jobErr != "" {
+						errMsg = "Failed: " + jobErr
 					}
 					if len(errMsg) > innerWidth-2 && innerWidth > 6 {
 						errMsg = errMsg[:innerWidth-5] + "..."
 					}
 					contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorDanger).Render("   "+errMsg))
-				} else if j.LatestStats != nil {
-					etaOrDone := "ETA " + rclone.FormatDuration(j.LatestStats.ETA)
-					if j.Status == rclone.JobStatusCompleted {
+				} else if latestStats != nil {
+					etaOrDone := "ETA " + rclone.FormatDuration(latestStats.ETA)
+					if st == rclone.JobStatusCompleted {
 						etaOrDone = "Done"
 					}
 					metricLine := fmt.Sprintf("   %s • %s • %s",
-						rclone.FormatBytes(j.LatestStats.Bytes),
-						rclone.FormatSpeed(j.LatestStats.Speed),
+						rclone.FormatBytes(latestStats.Bytes),
+						rclone.FormatSpeed(latestStats.Speed),
 						etaOrDone,
 					)
 					if len(metricLine) > innerWidth-2 && innerWidth > 6 {
 						metricLine = metricLine[:innerWidth-5] + "..."
 					}
 					contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorActive).Render(metricLine))
-				} else if j.Status == rclone.JobStatusCompleted {
+				} else if st == rclone.JobStatusCompleted {
 					contentLines = append(contentLines, lipgloss.NewStyle().Foreground(styles.ColorActive).Render("   Completed • Done"))
 				}
 			}

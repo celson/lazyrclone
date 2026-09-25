@@ -2,7 +2,10 @@ package rclone
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -210,7 +213,10 @@ func TestDeleteSafetyGuard(t *testing.T) {
 	ctx := context.Background()
 
 	dangerousPaths := []string{
-		"", "/", ".", "local:/", "gdrive:", "gdrive:/", "s3:", "s3:/",
+		"", "/", ".", "local:/", "gdrive:", "gdrive:/", "s3:", "s3:/", "remote: ", "/etc", "/root", "/usr",
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dangerousPaths = append(dangerousPaths, home, "local:"+home)
 	}
 
 	for _, p := range dangerousPaths {
@@ -218,6 +224,36 @@ func TestDeleteSafetyGuard(t *testing.T) {
 		if err == nil {
 			t.Errorf("expected error deleting dangerous path %q, got nil", p)
 		}
+	}
+}
+
+func TestTransferJobConcurrency(t *testing.T) {
+	job := &TransferJob{
+		ID:        "job-concurrency",
+		Status:    JobStatusRunning,
+		StartTime: time.Now(),
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(idx int) {
+			defer wg.Done()
+			job.AddLog(fmt.Sprintf("log %d", idx))
+			job.SetStats(&StatsMsg{Percentage: idx})
+		}(i)
+		go func() {
+			defer wg.Done()
+			_ = job.GetLogs()
+			_ = job.GetStats()
+			_, _ = job.GetStatus()
+		}()
+	}
+	wg.Wait()
+
+	logs := job.GetLogs()
+	if len(logs) != 50 {
+		t.Errorf("expected 50 logs, got %d", len(logs))
 	}
 }
 

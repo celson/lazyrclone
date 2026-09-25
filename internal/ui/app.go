@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"path"
 	"strings"
 	"time"
 
@@ -196,21 +195,20 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, j := range m.TransfersView.Jobs {
 			if j.ID == msg.JobID {
 				if msg.Stats != nil {
-					j.LatestStats = msg.Stats
+					j.SetStats(msg.Stats)
 				}
 				if msg.Log != "" {
-					j.Logs = append(j.Logs, msg.Log)
+					j.AddLog(msg.Log)
 				}
 				if msg.Done {
 					now := time.Now()
 					j.EndTime = &now
 					if msg.Err != nil {
-						j.Status = rclone.JobStatusFailed
-						j.ErrorMsg = msg.Err.Error()
+						j.SetStatus(rclone.JobStatusFailed, msg.Err.Error())
 					} else {
-						j.Status = rclone.JobStatusCompleted
-						if j.LatestStats != nil {
-							j.LatestStats.Percentage = 100
+						j.SetStatus(rclone.JobStatusCompleted, "")
+						if st := j.GetStats(); st != nil {
+							st.Percentage = 100
 						}
 					}
 				}
@@ -498,13 +496,18 @@ func (m *AppModel) handleProfilesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			fmt.Sprintf("Are you sure you want to delete profile '%s'?", p.Name),
 			true,
 			func() {
-				idx := m.ProfilesView.SelectedIdx
-				m.Config.Profiles = append(m.Config.Profiles[:idx], m.Config.Profiles[idx+1:]...)
+				targetID := p.ID
+				for i, prof := range m.Config.Profiles {
+					if prof.ID == targetID {
+						m.Config.Profiles = append(m.Config.Profiles[:i], m.Config.Profiles[i+1:]...)
+						break
+					}
+				}
 				if m.ProfilesView.SelectedIdx >= len(m.Config.Profiles) && m.ProfilesView.SelectedIdx > 0 {
 					m.ProfilesView.SelectedIdx--
 				}
 				_ = config.SaveConfig(m.Config)
-				m.StatusMsg = "Profile deleted."
+				m.StatusMsg = fmt.Sprintf("Profile '%s' deleted.", p.Name)
 				m.syncExplorerWithSelectedProfile()
 			},
 		)
@@ -687,8 +690,8 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			srcPane := m.ExplorerView.CurrentActivePane()
 			dstPane := m.ExplorerView.InactivePane()
-			srcPath := path.Join(srcPane.Remote, srcPane.CurrentDir, items[0].Name)
-			dstPath := path.Join(dstPane.Remote, dstPane.CurrentDir)
+			srcPath := views.BuildRemotePath(srcPane.Remote, srcPane.CurrentDir, items[0].Name)
+			dstPath := views.BuildRemotePath(dstPane.Remote, dstPane.CurrentDir, "")
 
 			job := &rclone.TransferJob{
 				ID:          fmt.Sprintf("copy-%d", time.Now().UnixNano()),
@@ -707,8 +710,8 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "s":
 			srcPane := m.ExplorerView.CurrentActivePane()
 			dstPane := m.ExplorerView.InactivePane()
-			srcPath := path.Join(srcPane.Remote, srcPane.CurrentDir)
-			dstPath := path.Join(dstPane.Remote, dstPane.CurrentDir)
+			srcPath := views.BuildRemotePath(srcPane.Remote, srcPane.CurrentDir, "")
+			dstPath := views.BuildRemotePath(dstPane.Remote, dstPane.CurrentDir, "")
 
 			m.Modal.ShowConfirm(
 				"Sync Folder to Target Pane",
@@ -728,19 +731,18 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.TransfersView.AddJob(job)
 					go func() {
 						err := m.Client.StartTransfer(context.Background(), job, func(stats *rclone.StatsMsg) {
-							job.LatestStats = stats
+							job.SetStats(stats)
 						}, func(log string) {
-							job.Logs = append(job.Logs, log)
+							job.AddLog(log)
 						})
 						endTime := time.Now()
 						job.EndTime = &endTime
 						if err != nil {
-							job.Status = rclone.JobStatusFailed
-							job.ErrorMsg = err.Error()
+							job.SetStatus(rclone.JobStatusFailed, err.Error())
 						} else {
-							job.Status = rclone.JobStatusCompleted
-							if job.LatestStats != nil {
-								job.LatestStats.Percentage = 100
+							job.SetStatus(rclone.JobStatusCompleted, "")
+							if st := job.GetStats(); st != nil {
+								st.Percentage = 100
 							}
 						}
 					}()
@@ -752,15 +754,16 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Modal.ShowInput("Create New Directory", "folder_name", func() {
 				val := strings.TrimSpace(m.Modal.Input.Value())
 				if val != "" {
-					full := path.Join(activePane.Remote, activePane.CurrentDir, val)
-					_ = m.Client.CreateDir(context.Background(), full)
-					activePane.Items = append(activePane.Items, rclone.FileItem{
-						Name:    val,
-						Path:    val,
-						IsDir:   true,
-						ModTime: time.Now(),
-					})
-					m.StatusMsg = fmt.Sprintf("Directory '%s' created.", val)
+					full := views.BuildRemotePath(activePane.Remote, activePane.CurrentDir, val)
+					err := m.Client.CreateDir(context.Background(), full)
+					if err != nil {
+						m.StatusMsg = fmt.Sprintf("Failed to create directory: %v", err)
+						m.IsStatusErr = true
+					} else {
+						m.ExplorerView.LoadPane(m.ExplorerView.ActivePane)
+						m.StatusMsg = fmt.Sprintf("Directory '%s' created.", val)
+						m.IsStatusErr = false
+					}
 				}
 			})
 
@@ -770,16 +773,36 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			activePane := m.ExplorerView.CurrentActivePane()
-			targetName := items[0].Name
+			var promptMsg string
+			if len(items) == 1 {
+				promptMsg = fmt.Sprintf("Are you sure you want to permanently delete '%s'?", items[0].Name)
+			} else {
+				promptMsg = fmt.Sprintf("Are you sure you want to permanently delete %d selected items?", len(items))
+			}
+
 			m.Modal.ShowConfirm(
 				"Delete File / Folder",
-				fmt.Sprintf("Are you sure you want to permanently delete '%s'?", targetName),
+				promptMsg,
 				true,
 				func() {
-					full := path.Join(activePane.Remote, activePane.CurrentDir, targetName)
-					_ = m.Client.Delete(context.Background(), full, items[0].IsDir)
+					var failed []string
+					deletedCount := 0
+					for _, item := range items {
+						full := views.BuildRemotePath(activePane.Remote, activePane.CurrentDir, item.Name)
+						if err := m.Client.Delete(context.Background(), full, item.IsDir); err != nil {
+							failed = append(failed, fmt.Sprintf("%s (%v)", item.Name, err))
+						} else {
+							deletedCount++
+						}
+					}
 					m.ExplorerView.LoadPane(m.ExplorerView.ActivePane)
-					m.StatusMsg = fmt.Sprintf("Deleted '%s'.", targetName)
+					if len(failed) > 0 {
+						m.StatusMsg = fmt.Sprintf("Deleted %d items. Failed: %s", deletedCount, strings.Join(failed, "; "))
+						m.IsStatusErr = true
+					} else {
+						m.StatusMsg = fmt.Sprintf("Successfully deleted %d item(s).", deletedCount)
+						m.IsStatusErr = false
+					}
 				},
 			)
 		}
@@ -856,23 +879,22 @@ func (m *AppModel) startProfileJob(p *config.Profile) {
 
 	go func() {
 		err := m.Client.StartTransfer(ctx, job, func(stats *rclone.StatsMsg) {
-			job.LatestStats = stats
+			job.SetStats(stats)
 		}, func(log string) {
-			job.Logs = append(job.Logs, log)
+			job.AddLog(log)
 		})
 
 		endTime := time.Now()
 		job.EndTime = &endTime
 		if err != nil {
-			job.Status = rclone.JobStatusFailed
-			job.ErrorMsg = err.Error()
+			job.SetStatus(rclone.JobStatusFailed, err.Error())
 			p.LastStatus = "failed"
 			m.StatusMsg = fmt.Sprintf("Job '%s' failed: %v", p.Name, err)
 			m.IsStatusErr = true
 		} else {
-			job.Status = rclone.JobStatusCompleted
-			if job.LatestStats != nil {
-				job.LatestStats.Percentage = 100
+			job.SetStatus(rclone.JobStatusCompleted, "")
+			if st := job.GetStats(); st != nil {
+				st.Percentage = 100
 			}
 			p.LastStatus = "success"
 			m.StatusMsg = fmt.Sprintf("Job '%s' completed successfully.", p.Name)
@@ -888,9 +910,9 @@ func (m *AppModel) startTransferCmd(job *rclone.TransferJob) tea.Cmd {
 
 	return func() tea.Msg {
 		err := m.Client.StartTransfer(ctx, job, func(stats *rclone.StatsMsg) {
-			job.LatestStats = stats
+			job.SetStats(stats)
 		}, func(log string) {
-			job.Logs = append(job.Logs, log)
+			job.AddLog(log)
 		})
 
 		return TransferUpdateMsg{
@@ -937,7 +959,11 @@ func (m *AppModel) renderMainPanel(width, height int) string {
 	case SubTabLogs:
 		job := m.TransfersView.ActiveJob()
 		var lines []string
-		if job == nil || len(job.Logs) == 0 {
+		var jobLogs []string
+		if job != nil {
+			jobLogs = job.GetLogs()
+		}
+		if len(jobLogs) == 0 {
 			lines = append(lines, "")
 			lines = append(lines, "  No active logs.")
 			lines = append(lines, "  Start a transfer with [r] in [1] Profiles to stream live output.")
@@ -946,15 +972,15 @@ func (m *AppModel) renderMainPanel(width, height int) string {
 			if visibleLogs < 1 {
 				visibleLogs = 1
 			}
-			start := len(job.Logs) - visibleLogs - m.LogsOffset
+			start := len(jobLogs) - visibleLogs - m.LogsOffset
 			if start < 0 {
 				start = 0
 			}
 			end := start + visibleLogs
-			if end > len(job.Logs) {
-				end = len(job.Logs)
+			if end > len(jobLogs) {
+				end = len(jobLogs)
 			}
-			for _, l := range job.Logs[start:end] {
+			for _, l := range jobLogs[start:end] {
 				lines = append(lines, "  "+l)
 			}
 		}

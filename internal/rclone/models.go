@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -14,7 +15,8 @@ func IsSensitiveConfigKey(key string) bool {
 	sensitiveSubstrings := []string{
 		"pass", "password", "secret", "token", "key", "auth",
 		"cred", "cert", "hash", "salt", "session", "signature",
-		"bearer", "oauth",
+		"bearer", "oauth", "service_account", "account_file",
+		"private_key", "credential",
 	}
 	for _, sub := range sensitiveSubstrings {
 		if strings.Contains(k, sub) {
@@ -130,6 +132,46 @@ type TransferJob struct {
 	Logs        []string
 	ErrorMsg    string
 	CancelFunc  context.CancelFunc
+	mu          sync.RWMutex
+}
+
+func (j *TransferJob) AddLog(line string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.Logs = append(j.Logs, line)
+}
+
+func (j *TransferJob) GetLogs() []string {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	res := make([]string, len(j.Logs))
+	copy(res, j.Logs)
+	return res
+}
+
+func (j *TransferJob) SetStats(s *StatsMsg) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.LatestStats = s
+}
+
+func (j *TransferJob) GetStats() *StatsMsg {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.LatestStats
+}
+
+func (j *TransferJob) SetStatus(st JobStatus, errMsg string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.Status = st
+	j.ErrorMsg = errMsg
+}
+
+func (j *TransferJob) GetStatus() (JobStatus, string) {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.Status, j.ErrorMsg
 }
 
 func FormatBytes(b int64) string {
