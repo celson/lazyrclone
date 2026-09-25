@@ -220,3 +220,52 @@ func TestDeleteSafetyGuard(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTransferArgs(t *testing.T) {
+	job := &TransferJob{
+		Operation:   "bisync",
+		Source:      "local:~/Documents",
+		Destination: "gdrive:Documents",
+		Flags:       []string{"--fast-list", "--resync", "--resync-mode path1"},
+		Exclude:     []string{"*.tmp", "node_modules/**"},
+		Transfers:   4,
+		Checkers:    8,
+		IsDryRun:    false,
+	}
+
+	args := BuildTransferArgs(job)
+
+	// Check required arguments
+	expectedSnippets := []string{
+		"bisync",
+		"gdrive:Documents",
+		"--transfers", "4",
+		"--checkers", "8",
+		"--exclude", "*.tmp",
+		"--exclude", "node_modules/**",
+		"--fast-list",
+		"--resync",
+		"--resync-mode", "path1",
+	}
+
+	for _, exp := range expectedSnippets {
+		found := false
+		for _, arg := range args {
+			if arg == exp {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected arg %q not found in args: %v", exp, args)
+		}
+	}
+}
+
+func TestStripAnsi(t *testing.T) {
+	colored := "\u001b[31mBisync critical error\u001b[0m: \u001b[35maborted\u001b[0m"
+	plain := stripAnsi(colored)
+	if plain != "Bisync critical error: aborted" {
+		t.Errorf("unexpected stripAnsi output: %q", plain)
+	}
+}

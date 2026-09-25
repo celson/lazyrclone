@@ -440,7 +440,7 @@ func (m *AppModel) handleProfilesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if p == nil {
 			return m, nil
 		}
-		if m.Config.Settings.ConfirmDestructive && (p.Operation == config.OpSync || p.Operation == config.OpMove) {
+		if m.Config.Settings.ConfirmDestructive && (p.Operation == config.OpSync || p.Operation == config.OpMove || p.Operation == config.OpBisync) {
 			m.Modal.ShowConfirm(
 				"Execute Operation: "+string(p.Operation),
 				fmt.Sprintf("Warning: Operation '%s' may modify or delete files at %s.\nAre you sure you want to proceed?", p.Operation, p.Destination),
@@ -803,7 +803,15 @@ func (m *AppModel) runDryRunCmd(p *config.Profile) tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 
-		res, err := m.Client.DryRun(ctx, string(p.Operation), p.Source, p.Destination, p.Flags)
+		var flags []string
+		for _, exc := range p.Exclude {
+			if strings.TrimSpace(exc) != "" {
+				flags = append(flags, "--exclude", exc)
+			}
+		}
+		flags = append(flags, p.Flags...)
+
+		res, err := m.Client.DryRun(ctx, string(p.Operation), p.Source, p.Destination, flags)
 		if err != nil {
 			return DryRunFinishedMsg{Result: &rclone.DryRunResult{Err: err}}
 		}
@@ -820,6 +828,10 @@ func (m *AppModel) startProfileJob(p *config.Profile) {
 		Source:      p.Source,
 		Destination: p.Destination,
 		Operation:   string(p.Operation),
+		Flags:       p.Flags,
+		Exclude:     p.Exclude,
+		Transfers:   p.Transfers,
+		Checkers:    p.Checkers,
 		StartTime:   time.Now(),
 		Status:      rclone.JobStatusRunning,
 		Logs:        make([]string, 0),

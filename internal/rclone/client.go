@@ -10,9 +10,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
+
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsi(str string) string {
+	return ansiRegex.ReplaceAllString(str, "")
+}
 
 func isValidOperation(op string) bool {
 	switch strings.ToLower(strings.TrimSpace(op)) {
@@ -303,7 +311,13 @@ func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest str
 	cleanDest := NormalizeRclonePath(dest)
 
 	args := []string{op, cleanSrc, cleanDest, "--dry-run", "-v", "--use-json-log"}
-	args = append(args, flags...)
+	for _, f := range flags {
+		for _, part := range strings.Fields(f) {
+			if strings.TrimSpace(part) != "" {
+				args = append(args, part)
+			}
+		}
+	}
 
 	cmd := exec.CommandContext(ctx, c.binaryPath, args...)
 	stderr, err := cmd.StderrPipe()
@@ -329,9 +343,15 @@ func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest str
 				Msg string `json:"msg"`
 			}
 			if jsonErr := json.Unmarshal([]byte(line), &raw); jsonErr == nil && raw.Msg != "" {
-				errMessages = append(errMessages, raw.Msg)
+				clean := strings.TrimSpace(stripAnsi(raw.Msg))
+				if clean != "" {
+					errMessages = append(errMessages, clean)
+				}
 			} else {
-				errMessages = append(errMessages, line)
+				clean := strings.TrimSpace(stripAnsi(line))
+				if clean != "" {
+					errMessages = append(errMessages, clean)
+				}
 			}
 		}
 
@@ -370,10 +390,8 @@ func (c *RealClient) DryRun(ctx context.Context, op string, src string, dest str
 	return result, nil
 }
 
-func (c *RealClient) StartTransfer(ctx context.Context, job *TransferJob, onStats func(*StatsMsg), onLog func(string)) error {
-	if !isValidOperation(job.Operation) {
-		return fmt.Errorf("unsupported or invalid rclone operation: %q", job.Operation)
-	}
+// BuildTransferArgs constructs the command-line arguments for rclone from a TransferJob
+func BuildTransferArgs(job *TransferJob) []string {
 	cleanSrc := NormalizeRclonePath(job.Source)
 	cleanDest := NormalizeRclonePath(job.Destination)
 
@@ -390,6 +408,34 @@ func (c *RealClient) StartTransfer(ctx context.Context, job *TransferJob, onStat
 		args = append(args, "--dry-run")
 	}
 
+	if job.Transfers > 0 {
+		args = append(args, "--transfers", strconv.Itoa(job.Transfers))
+	}
+	if job.Checkers > 0 {
+		args = append(args, "--checkers", strconv.Itoa(job.Checkers))
+	}
+	for _, exc := range job.Exclude {
+		if strings.TrimSpace(exc) != "" {
+			args = append(args, "--exclude", exc)
+		}
+	}
+	for _, f := range job.Flags {
+		for _, part := range strings.Fields(f) {
+			if strings.TrimSpace(part) != "" {
+				args = append(args, part)
+			}
+		}
+	}
+	return args
+}
+
+func (c *RealClient) StartTransfer(ctx context.Context, job *TransferJob, onStats func(*StatsMsg), onLog func(string)) error {
+	if !isValidOperation(job.Operation) {
+		return fmt.Errorf("unsupported or invalid rclone operation: %q", job.Operation)
+	}
+
+	args := BuildTransferArgs(job)
+
 	cmd := exec.CommandContext(ctx, c.binaryPath, args...)
 
 	stderr, err := cmd.StderrPipe()
@@ -401,9 +447,28 @@ func (c *RealClient) StartTransfer(ctx context.Context, job *TransferJob, onStat
 		return err
 	}
 
+	var errMessages []string
+
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		line := scanner.Text()
+		if strings.Contains(line, `"level":"critical"`) || strings.Contains(line, `"level":"error"`) {
+			var raw struct {
+				Msg string `json:"msg"`
+			}
+			if jsonErr := json.Unmarshal([]byte(line), &raw); jsonErr == nil && raw.Msg != "" {
+				clean := strings.TrimSpace(stripAnsi(raw.Msg))
+				if clean != "" {
+					errMessages = append(errMessages, clean)
+				}
+			} else {
+				clean := strings.TrimSpace(stripAnsi(line))
+				if clean != "" {
+					errMessages = append(errMessages, clean)
+				}
+			}
+		}
+
 		_, stats, msg := ParseLogLine(line)
 		if stats != nil && onStats != nil {
 			onStats(stats)
@@ -419,6 +484,9 @@ func (c *RealClient) StartTransfer(ctx context.Context, job *TransferJob, onStat
 			return fmt.Errorf("transfer timed out")
 		} else if errors.Is(ctx.Err(), context.Canceled) {
 			return fmt.Errorf("transfer cancelled")
+		}
+		if len(errMessages) > 0 {
+			return fmt.Errorf("%s", strings.Join(errMessages, " | "))
 		}
 		return waitErr
 	}

@@ -118,6 +118,10 @@ type TransferJob struct {
 	Source      string
 	Destination string
 	Operation   string
+	Flags       []string
+	Exclude     []string
+	Transfers   int
+	Checkers    int
 	IsDryRun    bool
 	StartTime   time.Time
 	EndTime     *time.Time
