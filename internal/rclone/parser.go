@@ -55,37 +55,39 @@ func ParseLogLine(line string) (*DryRunItem, *StatsMsg, string) {
 	}
 
 	// Check for dry-run actions in message or skipped field
-	msgLower := strings.ToLower(raw.Msg)
-	obj := raw.Object
-	if obj == "" {
-		obj = raw.Source
+	// Check for dry-run actions in message or skipped field.
+	// Only logs with an explicit object represent files/directories.
+	// raw.Source indicates the rclone Go source file (e.g. bisync/resync.go:44), never a transferred file.
+	if raw.Object == "" {
+		return nil, nil, raw.Msg
 	}
 
-	if obj != "" {
-		if raw.Skipped == "copy" || strings.Contains(msgLower, "copy") || strings.Contains(msgLower, "new") || strings.Contains(msgLower, "created") {
-			return &DryRunItem{
-				Action:  ActionAdd,
-				Path:    obj,
-				Size:    raw.Size,
-				Message: raw.Msg,
-			}, nil, raw.Msg
-		}
-		if raw.Skipped == "delete" || strings.Contains(msgLower, "delete") || strings.Contains(msgLower, "removed") {
-			return &DryRunItem{
-				Action:  ActionDelete,
-				Path:    obj,
-				Size:    raw.Size,
-				Message: raw.Msg,
-			}, nil, raw.Msg
-		}
-		if strings.Contains(msgLower, "update") || strings.Contains(msgLower, "modify") || strings.Contains(msgLower, "differ") {
-			return &DryRunItem{
-				Action:  ActionUpdate,
-				Path:    obj,
-				Size:    raw.Size,
-				Message: raw.Msg,
-			}, nil, raw.Msg
-		}
+	obj := raw.Object
+	msgLower := strings.ToLower(raw.Msg)
+
+	if raw.Skipped == "copy" || strings.Contains(msgLower, "copy") || strings.Contains(msgLower, "new") || strings.Contains(msgLower, "created") {
+		return &DryRunItem{
+			Action:  ActionAdd,
+			Path:    obj,
+			Size:    raw.Size,
+			Message: raw.Msg,
+		}, nil, raw.Msg
+	}
+	if raw.Skipped == "delete" || strings.Contains(msgLower, "delete") || strings.Contains(msgLower, "removed") {
+		return &DryRunItem{
+			Action:  ActionDelete,
+			Path:    obj,
+			Size:    raw.Size,
+			Message: raw.Msg,
+		}, nil, raw.Msg
+	}
+	if strings.Contains(msgLower, "update") || strings.Contains(msgLower, "modify") || strings.Contains(msgLower, "differ") {
+		return &DryRunItem{
+			Action:  ActionUpdate,
+			Path:    obj,
+			Size:    raw.Size,
+			Message: raw.Msg,
+		}, nil, raw.Msg
 	}
 
 	return nil, nil, raw.Msg

@@ -269,3 +269,17 @@ func TestStripAnsi(t *testing.T) {
 		t.Errorf("unexpected stripAnsi output: %q", plain)
 	}
 }
+
+func TestParseLogLineBisyncHeaderNotItem(t *testing.T) {
+	line := `{"level":"notice","msg":"Copying Path2 files to Path1","source":"bisync/resync.go:44","time":"2026-09-25T13:59:27Z"}`
+	item, stats, msg := ParseLogLine(line)
+	if item != nil {
+		t.Fatalf("expected nil item for bisync header log, got %+v", item)
+	}
+	if stats != nil {
+		t.Fatalf("expected nil stats, got %+v", stats)
+	}
+	if msg != "Copying Path2 files to Path1" {
+		t.Errorf("expected msg 'Copying Path2 files to Path1', got %q", msg)
+	}
+}
