@@ -68,10 +68,22 @@ func (dv *DiffView) RenderLines() []string {
 	}
 
 	if dv.Result.Err != nil {
-		return []string{
+		errStr := dv.Result.Err.Error()
+		lines := []string{
 			"",
-			lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(fmt.Sprintf("  Dry-run error: %v", dv.Result.Err)),
+			lipgloss.NewStyle().Foreground(styles.ColorDanger).Bold(true).Render("  Dry-run error:"),
+			lipgloss.NewStyle().Foreground(styles.ColorDanger).Render("  " + errStr),
 		}
+
+		if strings.Contains(errStr, "Must run --resync") || strings.Contains(errStr, "cannot find prior Path1 or Path2") {
+			lines = append(lines, "")
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorWarning).Bold(true).Render("  💡 Dica para 'bisync' (Sincronização Bidirecional):"))
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorWhite).Render("     O rclone bisync exige a flag '--resync' na primeira execução para criar a lista base."))
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorSecondary).Render("     👉 Pressione [e] neste perfil e adicione '--resync' nas Flags (ex: '--fast-list, --resync')."))
+			lines = append(lines, lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("     Após a primeira sincronização bem-sucedida, você pode remover a flag '--resync'."))
+		}
+
+		return lines
 	}
 
 	// Summary bar
