@@ -441,9 +441,18 @@ func (m *AppModel) handleProfilesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.Config.Settings.ConfirmDestructive && (p.Operation == config.OpSync || p.Operation == config.OpMove || p.Operation == config.OpBisync) {
+			msg := fmt.Sprintf("Operation '%s' target: %s\n", p.Operation, p.Destination)
+			if m.DiffView.Result != nil && m.DiffView.Result.Err == nil {
+				msg += fmt.Sprintf("Dry-run preview: +%d to add | ~%d to update | -%d to delete\n",
+					m.DiffView.Result.ToAdd, m.DiffView.Result.ToUpdate, m.DiffView.Result.ToDelete)
+			} else {
+				msg += fmt.Sprintf("Warning: Operation '%s' may modify or delete files at destination.\n", p.Operation)
+			}
+			msg += "\nAre you sure you want to proceed?"
+
 			m.Modal.ShowConfirm(
 				"Execute Operation: "+string(p.Operation),
-				fmt.Sprintf("Warning: Operation '%s' may modify or delete files at %s.\nAre you sure you want to proceed?", p.Operation, p.Destination),
+				msg,
 				true,
 				func() {
 					m.startProfileJob(p)

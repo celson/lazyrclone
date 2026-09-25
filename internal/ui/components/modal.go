@@ -195,11 +195,13 @@ func (m *ModalManager) Render(screenWidth, screenHeight int) string {
 
 	switch m.Type {
 	case ModalConfirm:
-		title := lipgloss.NewStyle().Bold(true).Foreground(styles.ColorWarning).Render(m.Title)
+		title := lipgloss.NewStyle().Bold(true).Foreground(styles.ColorWarning).MarginBottom(1).Render(m.Title)
 		if m.IsDanger {
-			title = lipgloss.NewStyle().Bold(true).Foreground(styles.ColorDanger).Render("⚠️  " + m.Title)
+			badge := lipgloss.NewStyle().Background(styles.ColorDanger).Foreground(styles.MochaBase).Bold(true).Render(" ! ")
+			titleText := lipgloss.NewStyle().Bold(true).Foreground(styles.ColorDanger).Render(" " + m.Title)
+			title = lipgloss.NewStyle().MarginBottom(1).Render(badge + titleText)
 		}
-		msg := lipgloss.NewStyle().Width(modalWidth - 4).Render(m.Message)
+		msg := lipgloss.NewStyle().Width(modalWidth - 4).Foreground(styles.ColorWhite).Render(m.Message)
 		buttons := lipgloss.NewStyle().MarginTop(1).Render(
 			lipgloss.JoinHorizontal(lipgloss.Center,
 				lipgloss.NewStyle().Foreground(styles.ColorSuccess).Bold(true).Render("[y] Confirm"),
@@ -207,7 +209,7 @@ func (m *ModalManager) Render(screenWidth, screenHeight int) string {
 				lipgloss.NewStyle().Foreground(styles.ColorMuted).Render("[n/Esc] Cancel"),
 			),
 		)
-		content = lipgloss.JoinVertical(lipgloss.Left, title, "\n", msg, buttons)
+		content = lipgloss.JoinVertical(lipgloss.Left, title, msg, buttons)
 
 	case ModalInput:
 		title := styles.ModalTitleStyle.Render(m.Title)
@@ -224,7 +226,9 @@ func (m *ModalManager) Render(screenWidth, screenHeight int) string {
 		content = lipgloss.JoinVertical(lipgloss.Left, title, strings.Join(fields, "\n"), buttons)
 
 	case ModalHelp:
-		title := lipgloss.NewStyle().Bold(true).Foreground(styles.ColorPrimary).Render("📖 lazyrclone Help & Keybindings")
+		badge := lipgloss.NewStyle().Background(styles.ColorPrimary).Foreground(styles.MochaBase).Bold(true).Render(" ? ")
+		titleText := lipgloss.NewStyle().Bold(true).Foreground(styles.ColorPrimary).Render(" lazyrclone Help & Keybindings")
+		title := lipgloss.NewStyle().MarginBottom(1).Render(badge + titleText)
 		helpLines := []string{
 			"Global Navigation:",
 			"  1, 2, 3, 4      Jump directly to [1] Profiles, [2] Remotes, [3] Transfers, [4] Main",
