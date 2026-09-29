@@ -55,7 +55,8 @@ func (v *TransfersView) MoveDown() {
 func (v *TransfersView) ClearCompleted() {
 	var active []*rclone.TransferJob
 	for _, j := range v.Jobs {
-		if j.Status == rclone.JobStatusRunning {
+		st, _ := j.GetStatus()
+		if st == rclone.JobStatusRunning {
 			active = append(active, j)
 		}
 	}

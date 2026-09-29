@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -113,7 +114,8 @@ func (m *AppModel) hasRunningJobs() bool {
 		return false
 	}
 	for _, j := range m.TransfersView.Jobs {
-		if j.Status == rclone.JobStatusRunning {
+		st, _ := j.GetStatus()
+		if st == rclone.JobStatusRunning {
 			return true
 		}
 	}
@@ -203,7 +205,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if msg.Done {
 					now := time.Now()
 					j.EndTime = &now
-					if msg.Err != nil {
+					st, _ := j.GetStatus()
+					if st == rclone.JobStatusCancelled || (msg.Err != nil && strings.Contains(msg.Err.Error(), "cancelled")) {
+						j.SetStatus(rclone.JobStatusCancelled, "Stopped by user")
+					} else if msg.Err != nil {
 						j.SetStatus(rclone.JobStatusFailed, msg.Err.Error())
 					} else {
 						j.SetStatus(rclone.JobStatusCompleted, "")
@@ -460,6 +465,56 @@ func (m *AppModel) handleProfilesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.startProfileJob(p)
 
+	case "s":
+		p := m.ProfilesView.SelectedProfile()
+		if p == nil {
+			return m, nil
+		}
+		stopped := false
+		for _, j := range m.TransfersView.Jobs {
+			st, _ := j.GetStatus()
+			if j.ProfileID == p.ID && st == rclone.JobStatusRunning {
+				if j.CancelFunc != nil {
+					j.CancelFunc()
+				}
+				j.SetStatus(rclone.JobStatusCancelled, "Stopped by user")
+				stopped = true
+				break
+			}
+		}
+		if stopped {
+			p.LastStatus = "cancelled"
+			_ = config.SaveConfig(m.Config)
+			m.StatusMsg = fmt.Sprintf("Stopped job for profile '%s'.", p.Name)
+			m.IsStatusErr = false
+		} else {
+			var runningJob *rclone.TransferJob
+			runningCount := 0
+			for _, j := range m.TransfersView.Jobs {
+				st, _ := j.GetStatus()
+				if st == rclone.JobStatusRunning {
+					runningCount++
+					runningJob = j
+				}
+			}
+			if runningCount == 1 && runningJob != nil {
+				if runningJob.CancelFunc != nil {
+					runningJob.CancelFunc()
+				}
+				runningJob.SetStatus(rclone.JobStatusCancelled, "Stopped by user")
+				m.StatusMsg = fmt.Sprintf("Stopped running job '%s'.", runningJob.Name)
+				m.IsStatusErr = false
+			} else if m.DryRunCancel != nil {
+				m.DryRunCancel()
+				m.DryRunCancel = nil
+				m.StatusMsg = "Dry-run stopped."
+				m.IsStatusErr = false
+			} else {
+				m.StatusMsg = fmt.Sprintf("Profile '%s' is not running.", p.Name)
+				m.IsStatusErr = false
+			}
+		}
+
 	case "n":
 		m.Modal.ShowProfileEdit(nil, func() {
 			newP := m.Modal.GetProfileResult()
@@ -603,14 +658,20 @@ func (m *AppModel) handleRunsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		m.TransfersView.ClearCompleted()
 		m.StatusMsg = "Cleared completed transfers."
-	case "x", "X":
+	case "s", "S", "x", "X":
 		job := m.TransfersView.ActiveJob()
-		if job != nil && job.Status == rclone.JobStatusRunning {
-			if job.CancelFunc != nil {
-				job.CancelFunc()
+		if job != nil {
+			st, _ := job.GetStatus()
+			if st == rclone.JobStatusRunning {
+				if job.CancelFunc != nil {
+					job.CancelFunc()
+				}
+				job.SetStatus(rclone.JobStatusCancelled, "Stopped by user")
+				m.StatusMsg = fmt.Sprintf("Stopped job '%s'.", job.Name)
+				m.IsStatusErr = false
+			} else {
+				m.StatusMsg = "Selected job is not running."
 			}
-			job.Status = rclone.JobStatusCancelled
-			m.StatusMsg = "Transfer cancelled."
 		}
 	}
 	return m, nil
@@ -643,11 +704,11 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.StatusMsg = fmt.Sprintf("Re-running dry-run for '%s'...", p.Name)
 				return m, m.runDryRunCmd(p)
 			}
-		case "x":
+		case "s", "S", "x", "X":
 			if m.DryRunCancel != nil {
 				m.DryRunCancel()
 				m.DryRunCancel = nil
-				m.StatusMsg = "Dry-run cancelled."
+				m.StatusMsg = "Dry-run stopped."
 				return m, clearStatusCmd()
 			}
 		}
@@ -729,15 +790,20 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						Logs:        make([]string, 0),
 					}
 					m.TransfersView.AddJob(job)
+					ctx, cancel := context.WithCancel(context.Background())
+					job.CancelFunc = cancel
 					go func() {
-						err := m.Client.StartTransfer(context.Background(), job, func(stats *rclone.StatsMsg) {
+						err := m.Client.StartTransfer(ctx, job, func(stats *rclone.StatsMsg) {
 							job.SetStats(stats)
 						}, func(log string) {
 							job.AddLog(log)
 						})
 						endTime := time.Now()
 						job.EndTime = &endTime
-						if err != nil {
+						st, _ := job.GetStatus()
+						if errors.Is(ctx.Err(), context.Canceled) || (err != nil && strings.Contains(err.Error(), "cancelled")) || st == rclone.JobStatusCancelled {
+							job.SetStatus(rclone.JobStatusCancelled, "Stopped by user")
+						} else if err != nil {
 							job.SetStatus(rclone.JobStatusFailed, err.Error())
 						} else {
 							job.SetStatus(rclone.JobStatusCompleted, "")
@@ -815,6 +881,23 @@ func (m *AppModel) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "down", "j":
 			m.LogsOffset++
+		case "s", "S", "x", "X":
+			job := m.TransfersView.ActiveJob()
+			if job != nil {
+				st, _ := job.GetStatus()
+				if st == rclone.JobStatusRunning {
+					if job.CancelFunc != nil {
+						job.CancelFunc()
+					}
+					job.SetStatus(rclone.JobStatusCancelled, "Stopped by user")
+					m.StatusMsg = fmt.Sprintf("Stopped job '%s'.", job.Name)
+					m.IsStatusErr = false
+				} else {
+					m.StatusMsg = "Selected job is not running."
+				}
+			} else {
+				m.StatusMsg = "No active job to stop."
+			}
 		}
 
 	case SubTabRemotes:
@@ -886,7 +969,13 @@ func (m *AppModel) startProfileJob(p *config.Profile) {
 
 		endTime := time.Now()
 		job.EndTime = &endTime
-		if err != nil {
+		st, _ := job.GetStatus()
+		if errors.Is(ctx.Err(), context.Canceled) || (err != nil && strings.Contains(err.Error(), "cancelled")) || st == rclone.JobStatusCancelled {
+			job.SetStatus(rclone.JobStatusCancelled, "Stopped by user")
+			p.LastStatus = "cancelled"
+			m.StatusMsg = fmt.Sprintf("Job '%s' stopped.", p.Name)
+			m.IsStatusErr = false
+		} else if err != nil {
 			job.SetStatus(rclone.JobStatusFailed, err.Error())
 			p.LastStatus = "failed"
 			m.StatusMsg = fmt.Sprintf("Job '%s' failed: %v", p.Name, err)
@@ -1076,6 +1165,7 @@ func (m *AppModel) View() string {
 			{Key: "1-4", Desc: "Focus"},
 			{Key: "d", Desc: "Dry-Run"},
 			{Key: "r/Enter", Desc: "Run"},
+			{Key: "s", Desc: "Stop"},
 			{Key: "l", Desc: "Main"},
 			{Key: "[ / ]", Desc: "Tabs"},
 			{Key: "n", Desc: "New"},
@@ -1105,7 +1195,7 @@ func (m *AppModel) View() string {
 			{Key: "1-4", Desc: "Focus"},
 			{Key: "j/k", Desc: "Select"},
 			{Key: "Enter", Desc: "Logs"},
-			{Key: "x", Desc: "Cancel"},
+			{Key: "s/x", Desc: "Stop"},
 			{Key: "c", Desc: "Clear Done"},
 			{Key: "[ / ]", Desc: "Tabs"},
 			{Key: "Tab", Desc: "Next"},
@@ -1119,6 +1209,7 @@ func (m *AppModel) View() string {
 				{Key: "1-4", Desc: "Panels"},
 				{Key: "j/k", Desc: "Scroll"},
 				{Key: "d", Desc: "Re-run"},
+				{Key: "s", Desc: "Stop"},
 				{Key: "[ / ]", Desc: "Tabs"},
 				{Key: "Esc", Desc: "Back"},
 				{Key: "Tab", Desc: "Next"},
@@ -1142,6 +1233,7 @@ func (m *AppModel) View() string {
 			shortcuts = []components.Shortcut{
 				{Key: "1-4", Desc: "Panels"},
 				{Key: "j/k", Desc: "Scroll"},
+				{Key: "s/x", Desc: "Stop"},
 				{Key: "[ / ]", Desc: "Tabs"},
 				{Key: "Esc", Desc: "Back"},
 				{Key: "Tab", Desc: "Next"},

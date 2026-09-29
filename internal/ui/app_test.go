@@ -103,3 +103,99 @@ func TestPanelNavigation(t *testing.T) {
 		t.Fatalf("expected MainSubTab to be SubTabExplorer, got %d", app.MainSubTab)
 	}
 }
+
+func TestStopExecution(t *testing.T) {
+	cfg := config.DefaultConfig()
+	client := rclone.NewMockClient()
+	app := NewAppModel(cfg, client)
+
+	// Add a running job for the first profile
+	p := cfg.Profiles[0]
+	cancelled := false
+	job := &rclone.TransferJob{
+		ID:        "job-test-1",
+		ProfileID: p.ID,
+		Name:      p.Name,
+		Status:    rclone.JobStatusRunning,
+		CancelFunc: func() {
+			cancelled = true
+		},
+	}
+	app.TransfersView.AddJob(job)
+
+	// 1. In Profiles panel, press 's'
+	app.FocusedPanel = 0 // PanelProfiles
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	if !cancelled {
+		t.Errorf("expected CancelFunc to be called when pressing 's' in Profiles")
+	}
+	st, _ := job.GetStatus()
+	if st != rclone.JobStatusCancelled {
+		t.Errorf("expected job status to be JobStatusCancelled, got %v", st)
+	}
+	if p.LastStatus != "cancelled" {
+		t.Errorf("expected profile LastStatus to be 'cancelled', got %s", p.LastStatus)
+	}
+
+	// 2. In Transfers panel, press 's' on a running job
+	cancelled2 := false
+	job2 := &rclone.TransferJob{
+		ID:     "job-test-2",
+		Name:   "Transfer 2",
+		Status: rclone.JobStatusRunning,
+		CancelFunc: func() {
+			cancelled2 = true
+		},
+	}
+	app.TransfersView.AddJob(job2)
+	app.FocusedPanel = 2 // PanelRuns
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	if !cancelled2 {
+		t.Errorf("expected CancelFunc to be called when pressing 's' in Transfers")
+	}
+	st2, _ := job2.GetStatus()
+	if st2 != rclone.JobStatusCancelled {
+		t.Errorf("expected job2 status to be JobStatusCancelled, got %v", st2)
+	}
+
+	// 3. In Live Logs (MainSubTab = SubTabLogs), press 's'
+	cancelled3 := false
+	job3 := &rclone.TransferJob{
+		ID:     "job-test-3",
+		Name:   "Transfer 3",
+		Status: rclone.JobStatusRunning,
+		CancelFunc: func() {
+			cancelled3 = true
+		},
+	}
+	app.TransfersView.AddJob(job3)
+	app.FocusedPanel = 3 // PanelMain
+	app.MainSubTab = SubTabLogs
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	if !cancelled3 {
+		t.Errorf("expected CancelFunc to be called when pressing 's' in Live Logs")
+	}
+	st3, _ := job3.GetStatus()
+	if st3 != rclone.JobStatusCancelled {
+		t.Errorf("expected job3 status to be JobStatusCancelled, got %v", st3)
+	}
+
+	// 4. In Diff Preview (SubTabDiff), press 's' with DryRunCancel active
+	dryRunCancelled := false
+	app.DryRunCancel = func() {
+		dryRunCancelled = true
+	}
+	app.MainSubTab = SubTabDiff
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+
+	if !dryRunCancelled {
+		t.Errorf("expected DryRunCancel to be called when pressing 's' in Diff View")
+	}
+	if app.DryRunCancel != nil {
+		t.Errorf("expected DryRunCancel to be cleared")
+	}
+}
+
