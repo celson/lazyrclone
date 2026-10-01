@@ -10,6 +10,7 @@ import (
 )
 
 func TestAppModelBorderEnclosure(t *testing.T) {
+	t.Setenv("LAZYRCLONE_CONFIG_DIR", t.TempDir())
 	cfg := config.DefaultConfig()
 	client := rclone.NewMockClient()
 	app := NewAppModel(cfg, client)
@@ -63,6 +64,7 @@ func TestAppModelBorderEnclosure(t *testing.T) {
 }
 
 func TestPanelNavigation(t *testing.T) {
+	t.Setenv("LAZYRCLONE_CONFIG_DIR", t.TempDir())
 	cfg := config.DefaultConfig()
 	client := rclone.NewMockClient()
 	app := NewAppModel(cfg, client)
@@ -105,6 +107,7 @@ func TestPanelNavigation(t *testing.T) {
 }
 
 func TestStopExecution(t *testing.T) {
+	t.Setenv("LAZYRCLONE_CONFIG_DIR", t.TempDir())
 	cfg := config.DefaultConfig()
 	client := rclone.NewMockClient()
 	app := NewAppModel(cfg, client)

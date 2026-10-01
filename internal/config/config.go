@@ -90,6 +90,9 @@ func DefaultConfig() *Config {
 }
 
 func ConfigDir() (string, error) {
+	if custom := os.Getenv("LAZYRCLONE_CONFIG_DIR"); custom != "" {
+		return custom, nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err

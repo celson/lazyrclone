@@ -20,15 +20,8 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestSaveAndLoadConfig(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "lazyrclone-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempDir)
-	defer os.Setenv("HOME", origHome)
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
 
 	cfg := DefaultConfig()
 	cfg.Profiles = append(cfg.Profiles, &Profile{
@@ -66,5 +59,18 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	configFile := filepath.Join(tempDir, ".config", "lazyrclone", "config.yaml")
 	if _, err := os.Stat(configFile); err != nil {
 		t.Errorf("expected config file at %s, got: %v", configFile, err)
+	}
+}
+
+func TestCustomConfigDir(t *testing.T) {
+	customDir := t.TempDir()
+	t.Setenv("LAZYRCLONE_CONFIG_DIR", customDir)
+
+	dir, err := ConfigDir()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir != customDir {
+		t.Errorf("expected %s, got %s", customDir, dir)
 	}
 }
