@@ -21,26 +21,35 @@ Built in **Go** using [Bubble Tea](https://github.com/charmbracelet/bubbletea) a
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Go 1.22+ (to build from source)
+- [mise](https://mise.jdx.dev/) or Go 1.22+ (to build from source)
 - [rclone](https://rclone.org/downloads/) installed and on `$PATH` *(optional: runs in demo mode if missing)*
 
-### Installation
+### Installation & Build
 
+Using **[mise](https://mise.jdx.dev/)**:
 ```bash
 git clone https://github.com/celson/lazyrclone.git
 cd lazyrclone
-make build
-./bin/lazyrclone
+
+# Build binary into ./bin/lazyrclone
+mise run build
+
+# Or directly run lazyrclone
+mise run run
+
+# Run unit tests
+mise run test
 ```
 
-Or install directly with Go:
+Or directly with Go:
 ```bash
 go install ./cmd/lazyrclone
 ```
 
 ### Running Demo Mode
 ```bash
-lazyrclone --demo
+mise run demo
+# or: ./bin/lazyrclone --demo
 ```
 
 ---
