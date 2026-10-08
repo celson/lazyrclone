@@ -24,7 +24,7 @@ func main() {
 	rcloneBinFlag := flag.String("rclone-path", "rclone", "Path to the rclone executable")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "lazyrclone — A simple terminal UI for rclone (inspired by lazyrsync)\n\n")
+		fmt.Fprintf(os.Stderr, "lazyrclone — A simple terminal UI for rclone\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: lazyrclone [options]\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()

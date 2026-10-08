@@ -1092,7 +1092,7 @@ func (m *AppModel) View() string {
 	// Total screen height = m.Height
 	// Status bar = 1 row at the very bottom
 	// Panels occupy all remaining rows: m.Height - 1
-	// Starts at row 0 (exact top edge, identical to Lazygit & Lazydocker)
+	// Starts at row 0 (exact top edge)
 	availHeight := m.Height - 1
 	if availHeight < 6 {
 		availHeight = 6

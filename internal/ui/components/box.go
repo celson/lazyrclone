@@ -14,7 +14,7 @@ type SubTabItem struct {
 
 // RenderPanelBox draws a completely enclosed, rectangular box with the title
 // and optional sub-tabs embedded directly into the top border line,
-// identical to Lazygit and Lazydocker.
+// with the box border doubling as the header.
 // It is guaranteed to render EXACTLY `height` lines and EXACTLY `width` columns.
 func RenderPanelBox(width, height int, title string, subTabs []SubTabItem, isActive bool, contentLines []string) string {
 	if width < 6 {
