@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	Version = "0.1.0"
+	Version = "dev"
 	Commit  = "none"
 	Date    = "unknown"
 )
@@ -39,7 +39,7 @@ func main() {
 	flag.Parse()
 
 	if *versionFlag || *vShortFlag {
-		fmt.Printf("lazyrclone v%s (commit: %s, built: %s)\n", Version, Commit, Date)
+		fmt.Printf("lazyrclone %s (commit: %s, built: %s)\n", displayVersion(Version), Commit, Date)
 		os.Exit(0)
 	}
 
@@ -68,4 +68,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error running lazyrclone: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// displayVersion prefixes numeric versions (e.g. "0.1.1") with "v"; other
+// values such as "dev" are shown as-is.
+func displayVersion(v string) string {
+	if v != "" && v[0] >= '0' && v[0] <= '9' {
+		return "v" + v
+	}
+	return v
 }

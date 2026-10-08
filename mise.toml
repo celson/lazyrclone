@@ -12,7 +12,8 @@ sources = ["**/*.go", "go.mod", "go.sum"]
 outputs = ["bin/lazyrclone"]
 run = """
 mkdir -p bin
-VERSION="0.1.0"
+VERSION=$(git describe --tags --always --dirty 2>/dev/null | sed "s/^v//")
+VERSION=${VERSION:-dev}
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.Date=${DATE}"
@@ -42,7 +43,8 @@ run = "go test -v -race ./..."
 [tasks.install]
 description = "Install lazyrclone binary to GOBIN"
 run = """
-VERSION="0.1.0"
+VERSION=$(git describe --tags --always --dirty 2>/dev/null | sed "s/^v//")
+VERSION=${VERSION:-dev}
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.Date=${DATE}"
