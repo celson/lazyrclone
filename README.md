@@ -1,6 +1,9 @@
 # lazyrclone
 
-A terminal UI for [rclone](https://rclone.org/), inspired by [lazyrsync](https://github.com/westpoint-io/lazyrsync). Written in Go with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss).
+[![CI](https://github.com/celson/lazyrclone/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/celson/lazyrclone/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/celson/lazyrclone)](https://github.com/celson/lazyrclone/releases/latest)
+
+A terminal UI for [rclone](https://rclone.org/), inspired by [lazydocker](https://github.com/jesseduffield/lazydocker). Written in Go with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss).
 
 lazyrclone does not reimplement any transfer logic: it runs the `rclone` binary on your `$PATH` (or the one you point it to) and shows the result.
 
