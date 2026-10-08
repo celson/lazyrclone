@@ -14,11 +14,11 @@ import (
 )
 
 type RemoteItem struct {
-	Info     rclone.RemoteInfo
-	About    *rclone.AboutInfo
-	Testing  bool
-	TestOK   *bool
-	TestMsg  string
+	Info    rclone.RemoteInfo
+	About   *rclone.AboutInfo
+	Testing bool
+	TestOK  *bool
+	TestMsg string
 }
 
 type RemotesView struct {

@@ -201,4 +201,3 @@ func TestStopExecution(t *testing.T) {
 		t.Errorf("expected DryRunCancel to be cleared")
 	}
 }
-
