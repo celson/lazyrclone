@@ -21,6 +21,14 @@ lazyrclone does not reimplement any transfer logic: it runs the `rclone` binary 
 
 Pre-built archives for Linux and macOS (amd64 and arm64) are attached to each [GitHub release](https://github.com/celson/lazyrclone/releases), together with a `checksums.txt`.
 
+### With mise
+
+```bash
+mise use -g github:celson/lazyrclone
+```
+
+This downloads the matching release archive from GitHub. To pin a version: `mise use -g github:celson/lazyrclone@0.1.0`.
+
 ### From source
 
 Requires the Go version declared in `go.mod` (currently 1.26.8). The repo pins it for [mise](https://mise.jdx.dev/) in `mise.toml`.
